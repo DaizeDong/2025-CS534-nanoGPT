@@ -1,0 +1,1107 @@
+# Fix style name conflict and rebuild the PDF.
+from reportlab.lib.pagesizes import letter, landscape
+from reportlab.lib.units import inch
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Preformatted
+from reportlab.lib import colors
+from datetime import datetime
+import os
+import textwrap
+
+output_path = "Warmup-nanoGPT-report.pdf"
+img_path = "loss_plot.png"
+
+
+def wrap_block(s, width=140, indent="    "):
+    """Hard-wrap long lines to avoid PDF truncation in landscape."""
+    if isinstance(s, list):
+        s = "\n".join(s)
+    wrapped = []
+    for ln in s.splitlines():
+        wrapped.append(textwrap.fill(
+            ln, width=width, subsequent_indent=indent,
+            break_long_words=True, break_on_hyphens=False
+        ))
+    return "\n".join(wrapped)
+
+
+styles = getSampleStyleSheet()
+# Use unique names to avoid conflicts
+styles.add(ParagraphStyle(name='CodeMono', fontName='Courier', fontSize=9, leading=11))
+styles.add(ParagraphStyle(name='SectionHdr', fontSize=14, leading=18, spaceBefore=12, spaceAfter=6, textColor=colors.HexColor("#1f2937")))
+styles.add(ParagraphStyle(name='TitleBig2', fontSize=18, leading=22, spaceAfter=12, alignment=1, textColor=colors.HexColor("#111827")))
+
+doc = SimpleDocTemplate(output_path, pagesize=landscape(letter), rightMargin=18, leftMargin=18, topMargin=54, bottomMargin=54)
+story = []
+
+# Title
+title = "Warmup Assignment — nanoGPT on Shakespeare"
+author = "Daize Dong"
+date_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+story.append(Paragraph(title, styles['TitleBig2']))
+story.append(Paragraph(f"{author} · Generated {date_str}", styles['Normal']))
+story.append(Spacer(1, 0.25*inch))
+
+# Section 1
+story.append(Paragraph("1. Environment & Node Allocation", styles['SectionHdr']))
+story.append(Paragraph("System: NERSC Perlmutter (GPU). Do not run on login nodes.", styles['Normal']))
+alloc_cmd = """srun -A bcrc-dtai-gh --qos=bcrc-dtai-gh -p ghx4 -t 4:00:00 --nodes=1 --ntasks-per-node=1 --cpus-per-task=16 --gres=gpu:h100:1 --mem=256g --pty bash -i
+module load cuda/12.6.1
+module load gcc/11.4.0
+"""
+story.append(Preformatted(wrap_block(alloc_cmd, 140), styles['CodeMono']))
+
+# Section 2
+story.append(Paragraph("2. Installation Commands", styles['SectionHdr']))
+install_cmds = r"""git clone https://github.com/karpathy/nanoGPT
+cd nanoGPT/
+conda create -n nanogpt python=3.10
+conda activate nanogpt
+pip install torch --index-url https://download.pytorch.org/whl/cu126
+pip install numpy transformers datasets tiktoken wandb tqdm"""
+story.append(Preformatted(wrap_block(install_cmds, 140), styles['CodeMono']))
+
+# Section 3
+story.append(Paragraph("3. Data Processing Commands", styles['SectionHdr']))
+data_cmds = """python data/shakespeare_char/prepare.py"""
+story.append(Preformatted(wrap_block(data_cmds, 140), styles['CodeMono']))
+
+# Section 4
+story.append(Paragraph("4. Training Commands", styles['SectionHdr']))
+train_cmds = r"""python train.py config/train_shakespeare_char.py"""
+story.append(Preformatted(wrap_block(train_cmds, 140), styles['CodeMono']))
+
+# Section 5
+story.append(Paragraph("5. Representative Logs", styles['SectionHdr']))
+logs_text = """Overriding config with config/train_shakespeare_char.py:
+# train a miniature character-level shakespeare model
+# good for debugging and playing on macbooks and such
+
+out_dir = 'out-shakespeare-char'
+eval_interval = 250 # keep frequent because we'll overfit
+eval_iters = 200
+log_interval = 10 # don't print too too often
+
+# we expect to overfit on this small dataset, so only save when val improves
+always_save_checkpoint = False
+
+wandb_log = False # override via command line if you like
+wandb_project = 'shakespeare-char'
+wandb_run_name = 'mini-gpt'
+
+dataset = 'shakespeare_char'
+gradient_accumulation_steps = 1
+batch_size = 64
+block_size = 256 # context of up to 256 previous characters
+
+# baby GPT model :)
+n_layer = 6
+n_head = 6
+n_embd = 384
+dropout = 0.2
+
+learning_rate = 1e-3 # with baby networks can afford to go a bit higher
+max_iters = 5000
+lr_decay_iters = 5000 # make equal to max_iters usually
+min_lr = 1e-4 # learning_rate / 10 usually
+beta2 = 0.99 # make a bit bigger because number of tokens per iter is small
+
+warmup_iters = 100 # not super necessary potentially
+
+# on macbook also add
+# device = 'cpu'  # run on cpu only
+compile = False # do not torch compile the model
+
+tokens per iteration will be: 16,384
+found vocab_size = 65 (inside data/shakespeare_char/meta.pkl)
+Initializing a new model from scratch
+number of parameters: 10.65M
+/u/ddong/workspace/nanoGPT/train.py:196: FutureWarning: `torch.cuda.amp.GradScaler(args...)` is deprecated. Please use `torch.amp.GradScaler('cuda', args...)` instead.
+  scaler = torch.cuda.amp.GradScaler(enabled=(dtype == 'float16'))
+num decayed parameter tensors: 26, with 10,740,096 parameters
+num non-decayed parameter tensors: 13, with 4,992 parameters
+using fused AdamW: True
+step 0: train loss 4.2874, val loss 4.2823
+iter 0: loss 4.2714, time 3520.31ms, mfu -100.00%
+iter 10: loss 3.1476, time 12.42ms, mfu 30.00%
+iter 20: loss 2.7333, time 12.17ms, mfu 30.06%
+iter 30: loss 2.6157, time 12.02ms, mfu 30.15%
+iter 40: loss 2.5761, time 12.08ms, mfu 30.22%
+iter 50: loss 2.5257, time 12.19ms, mfu 30.26%
+iter 60: loss 2.5101, time 12.18ms, mfu 30.29%
+iter 70: loss 2.4937, time 12.17ms, mfu 30.33%
+iter 80: loss 2.4949, time 12.14ms, mfu 30.36%
+iter 90: loss 2.4642, time 12.29ms, mfu 30.36%
+iter 100: loss 2.4559, time 12.06ms, mfu 30.41%
+iter 110: loss 2.4545, time 12.18ms, mfu 30.43%
+iter 120: loss 2.4294, time 12.05ms, mfu 30.48%
+iter 130: loss 2.4133, time 12.24ms, mfu 30.48%
+iter 140: loss 2.4042, time 12.19ms, mfu 30.49%
+iter 150: loss 2.4085, time 12.06ms, mfu 30.53%
+iter 160: loss 2.3676, time 12.12ms, mfu 30.55%
+iter 170: loss 2.3564, time 12.33ms, mfu 30.52%
+iter 180: loss 2.3013, time 12.19ms, mfu 30.52%
+iter 190: loss 2.2393, time 12.17ms, mfu 30.53%
+iter 200: loss 2.2029, time 11.99ms, mfu 30.59%
+iter 210: loss 2.1412, time 12.04ms, mfu 30.62%
+iter 220: loss 2.1340, time 12.06ms, mfu 30.65%
+iter 230: loss 2.0779, time 12.15ms, mfu 30.65%
+iter 240: loss 2.0766, time 12.06ms, mfu 30.68%
+step 250: train loss 1.9638, val loss 2.0642
+saving checkpoint to out-shakespeare-char
+iter 250: loss 2.0311, time 2550.40ms, mfu 27.62%
+iter 260: loss 1.9738, time 12.18ms, mfu 27.92%
+...
+iter 4830: loss 0.8300, time 12.18ms, mfu 28.88%
+iter 4840: loss 0.8442, time 12.40ms, mfu 29.00%
+iter 4850: loss 0.8345, time 12.39ms, mfu 29.11%
+iter 4860: loss 0.8237, time 12.03ms, mfu 29.29%
+iter 4870: loss 0.8187, time 12.16ms, mfu 29.43%
+iter 4880: loss 0.8363, time 12.19ms, mfu 29.54%
+iter 4890: loss 0.8198, time 12.29ms, mfu 29.62%
+iter 4900: loss 0.8156, time 12.33ms, mfu 29.68%
+iter 4910: loss 0.8341, time 12.32ms, mfu 29.74%
+iter 4920: loss 0.8262, time 12.44ms, mfu 29.76%
+iter 4930: loss 0.8130, time 12.22ms, mfu 29.83%
+iter 4940: loss 0.8096, time 12.42ms, mfu 29.85%
+iter 4950: loss 0.8373, time 12.45ms, mfu 29.86%
+iter 4960: loss 0.8353, time 12.52ms, mfu 29.85%
+iter 4970: loss 0.7957, time 12.34ms, mfu 29.88%
+iter 4980: loss 0.8014, time 12.24ms, mfu 29.94%
+iter 4990: loss 0.8311, time 12.33ms, mfu 29.97%
+step 5000: train loss 0.6296, val loss 1.6980
+iter 5000: loss 0.8360, time 2260.00ms, mfu 26.99%"""
+story.append(Preformatted(wrap_block(logs_text, 140), styles['CodeMono']))
+
+# Section 6
+story.append(Paragraph("6. Loss Curves (Train & Val)", styles['SectionHdr']))
+if os.path.exists(img_path):
+    max_width = 7.5 * inch
+    # Image aspect ratio from metadata provided: 371x600 (h x w)
+    w, h = max_width, max_width * (371/600.0)
+    story.append(Paragraph("Figure 1: miniGPT-shakespeare.png (Axes: Steps vs Loss)", styles['Normal']))
+    story.append(Spacer(1, 0.1*inch))
+    story.append(Image(img_path, width=w, height=h))
+else:
+    story.append(Paragraph("(Loss image not found at expected path.)", styles['Normal']))
+
+# Section 7
+story.append(Spacer(1, 0.2*inch))
+story.append(Paragraph("7. Full Command History", styles['SectionHdr']))
+placeholder = """(base) ddong@gh-login03:~/workspace> git clone https://github.com/karpathy/nanoGPT
+Cloning into 'nanoGPT'...
+remote: Enumerating objects: 686, done.
+remote: Total 686 (delta 0), reused 0 (delta 0), pack-reused 686 (from 1)
+Receiving objects: 100% (686/686), 974.05 KiB | 9.55 MiB/s, done.
+Resolving deltas: 100% (380/380), done.
+(base) ddong@gh-login03:~/workspace> cd nanoGPT/
+(base) ddong@gh-login03:~/workspace/nanoGPT> ls
+[1m[34massets[0m[39m[49m  bench.py  [1m[34mconfig[0m[39m[49m  configurator.py  [1m[34mdata[0m[39m[49m  LICENSE  model.py  README.md  sample.py  scaling_laws.ipynb  train.py  transformer_sizing.ipynb
+(base) ddong@gh-login03:~/workspace/nanoGPT> conda create -n nanogpt python=3.10                                                                                            
+[1m[32m2 channel Terms of Service accepted
+[0m[39m[49mRetrieving notices: done
+Channels:
+ - defaults
+Platform: linux-aarch64
+Collecting package metadata (repodata.json): done
+Solving environment: done
+
+## Package Plan ##
+
+  environment location: /u/ddong/miniconda3/envs/nanogpt
+
+  added / updated specs:
+    - python=3.10
+
+
+The following packages will be downloaded:
+
+    package                    |            build
+    ---------------------------|-----------------
+    ca-certificates-2025.9.9   |       hd43f75c_0         127 KB
+    libzlib-1.3.1              |       h998d150_0          65 KB
+    python-3.10.18             |       hbb0f47a_0        13.1 MB
+    setuptools-78.1.1          |  py310hd43f75c_0         1.6 MB
+    wheel-0.45.1               |  py310hd43f75c_0         115 KB
+    zlib-1.3.1                 |       h998d150_0         103 KB
+    ------------------------------------------------------------
+                                           Total:        15.2 MB
+
+The following NEW packages will be INSTALLED:
+
+  _libgcc_mutex      pkgs/main/linux-aarch64::_libgcc_mutex-0.1-main 
+  _openmp_mutex      pkgs/main/linux-aarch64::_openmp_mutex-5.1-51_gnu 
+  bzip2              pkgs/main/linux-aarch64::bzip2-1.0.8-h998d150_6 
+  ca-certificates    pkgs/main/linux-aarch64::ca-certificates-2025.9.9-hd43f75c_0 
+  expat              pkgs/main/linux-aarch64::expat-2.7.1-h419075a_0 
+  ld_impl_linux-aar~ pkgs/main/linux-aarch64::ld_impl_linux-aarch64-2.40-h48e3ba3_0 
+  libffi             pkgs/main/linux-aarch64::libffi-3.4.4-h419075a_1 
+  libgcc-ng          pkgs/main/linux-aarch64::libgcc-ng-11.2.0-h1234567_1 
+  libgomp            pkgs/main/linux-aarch64::libgomp-11.2.0-h1234567_1 
+  libstdcxx-ng       pkgs/main/linux-aarch64::libstdcxx-ng-11.2.0-h1234567_1 
+  libuuid            pkgs/main/linux-aarch64::libuuid-1.41.5-h998d150_0 
+  libxcb             pkgs/main/linux-aarch64::libxcb-1.17.0-hf66535e_0 
+  libzlib            pkgs/main/linux-aarch64::libzlib-1.3.1-h998d150_0 
+  ncurses            pkgs/main/linux-aarch64::ncurses-6.5-h419075a_0 
+  openssl            pkgs/main/linux-aarch64::openssl-3.0.17-h998d150_0 
+  pip                pkgs/main/noarch::pip-25.2-pyhc872135_0 
+  pthread-stubs      pkgs/main/linux-aarch64::pthread-stubs-0.3-hfd63f10_1 
+  python             pkgs/main/linux-aarch64::python-3.10.18-hbb0f47a_0 
+  readline           pkgs/main/linux-aarch64::readline-8.3-h886d1d0_0 
+  setuptools         pkgs/main/linux-aarch64::setuptools-78.1.1-py310hd43f75c_0 
+  sqlite             pkgs/main/linux-aarch64::sqlite-3.50.2-h998d150_1 
+  tk                 pkgs/main/linux-aarch64::tk-8.6.15-h987d8db_0 
+  tzdata             pkgs/main/noarch::tzdata-2025b-h04d1e81_0 
+  wheel              pkgs/main/linux-aarch64::wheel-0.45.1-py310hd43f75c_0 
+  xorg-libx11        pkgs/main/linux-aarch64::xorg-libx11-1.8.12-hf66535e_1 
+  xorg-libxau        pkgs/main/linux-aarch64::xorg-libxau-1.0.12-hf66535e_0 
+  xorg-libxdmcp      pkgs/main/linux-aarch64::xorg-libxdmcp-1.1.5-hf66535e_0 
+  xorg-xorgproto     pkgs/main/linux-aarch64::xorg-xorgproto-2024.1-h998d150_1 
+  xz                 pkgs/main/linux-aarch64::xz-5.6.4-h998d150_1 
+  zlib               pkgs/main/linux-aarch64::zlib-1.3.1-h998d150_0 
+
+
+Proceed ([y]/n)? y
+
+
+Downloading and Extracting Packages:
+                                                                                                                                                                            
+Preparing transaction: done                                                                                                                                                 
+Verifying transaction: done                                                                                                                                                 
+Executing transaction: done                                                                                                                                                 
+#                                                                                                                                                                           
+# To activate this environment, use                                                                                                                                         
+#
+#     $ conda activate nanogpt
+#
+# To deactivate an active environment, use
+#
+#     $ conda deactivate
+
+(base) ddong@gh-login03:~/workspace/nanoGPT> conda activate nanogpt
+(nanogpt) ddong@gh-login03:~/workspace/nanoGPT> module load cuda/12.6.1
+AWS OFI NCCL Plugin v1.6.0 loaded for CUDA 12.6.1
+This provides network transport ONLY - NCCL library from PyTorch
+Configured for Slingshot11/CXI interconnect
+CUDA 12.6.1 loaded with compatible AWS OFI NCCL plugin v1.6.0
+Plugin provides network transport - NCCL library from PyTorch
+Use with python/miniforge3_pytorch/2.7.0 or equivalent for best compatibility
+
+The following have been reloaded with a version change:
+  1) gcc-native/13.2 => gcc-native/12.3
+
+(nanogpt) ddong@gh-login03:~/workspace/nanoGPT> module load gcc/11.4.0
+
+Lmod is automatically replacing "gcc-native/12.3" with "gcc/11.4.0".
+
+
+Inactive Modules:
+  1) cray-libsci     2) cray-mpich
+
+(nanogpt) ddong@gh-login03:~/workspace/nanoGPT> pip install torch --index-url https://download.pytorch.org/whl/cu126
+Looking in indexes: https://download.pytorch.org/whl/cu126
+Collecting torch
+  Downloading https://download.pytorch.org/whl/cu126/torch-2.6.0%2Bcu126-cp310-cp310-linux_aarch64.whl.metadata (26 kB)
+Collecting filelock (from torch)
+  Using cached https://download.pytorch.org/whl/filelock-3.13.1-py3-none-any.whl.metadata (2.8 kB)
+Collecting typing-extensions>=4.10.0 (from torch)
+  Using cached https://download.pytorch.org/whl/typing_extensions-4.12.2-py3-none-any.whl.metadata (3.0 kB)
+Collecting sympy==1.13.1 (from torch)
+  Using cached https://download.pytorch.org/whl/sympy-1.13.1-py3-none-any.whl (6.2 MB)
+Collecting networkx (from torch)
+  Using cached https://download.pytorch.org/whl/networkx-3.3-py3-none-any.whl.metadata (5.1 kB)
+Collecting jinja2 (from torch)
+  Using cached https://download.pytorch.org/whl/Jinja2-3.1.4-py3-none-any.whl.metadata (2.6 kB)
+Collecting fsspec (from torch)
+  Using cached https://download.pytorch.org/whl/fsspec-2024.6.1-py3-none-any.whl.metadata (11 kB)
+Collecting mpmath<1.4,>=1.1.0 (from sympy==1.13.1->torch)
+  Using cached https://download.pytorch.org/whl/mpmath-1.3.0-py3-none-any.whl (536 kB)
+Collecting MarkupSafe>=2.0 (from jinja2->torch)
+  Downloading https://download.pytorch.org/whl/MarkupSafe-2.1.5-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (26 kB)
+Downloading https://download.pytorch.org/whl/cu126/torch-2.6.0%2Bcu126-cp310-cp310-linux_aarch64.whl (2462.4 MB)
+   [38;5;70m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[39m [32m2.5/2.5 GB[39m [31m57.2 MB/s[39m  [33m0:00:27
+[39mUsing cached https://download.pytorch.org/whl/typing_extensions-4.12.2-py3-none-any.whl (37 kB)
+Using cached https://download.pytorch.org/whl/filelock-3.13.1-py3-none-any.whl (11 kB)
+Using cached https://download.pytorch.org/whl/fsspec-2024.6.1-py3-none-any.whl (177 kB)
+Using cached https://download.pytorch.org/whl/Jinja2-3.1.4-py3-none-any.whl (133 kB)
+Using cached https://download.pytorch.org/whl/networkx-3.3-py3-none-any.whl (1.7 MB)
+Installing collected packages: mpmath, typing-extensions, sympy, networkx, MarkupSafe, fsspec, filelock, jinja2, torch
+Successfully installed MarkupSafe-2.1.5 filelock-3.13.1 fsspec-2024.6.1 jinja2-3.1.4 mpmath-1.3.0 networkx-3.3 sympy-1.13.1 torch-2.6.0+cu126 typing-extensions-4.12.2
+(nanogpt) ddong@gh-login03:~/workspace/nanoGPT> pip install numpy transformers datasets tiktoken wandb tqdm
+Collecting numpy
+  Downloading numpy-2.2.6-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (63 kB)
+Collecting transformers
+  Downloading transformers-4.56.2-py3-none-any.whl.metadata (40 kB)
+Collecting datasets
+  Downloading datasets-4.1.1-py3-none-any.whl.metadata (18 kB)
+Collecting tiktoken
+  Downloading tiktoken-0.11.0-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (6.7 kB)
+Collecting wandb
+  Downloading wandb-0.22.0-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (10 kB)
+Collecting tqdm
+  Using cached tqdm-4.67.1-py3-none-any.whl.metadata (57 kB)
+Requirement already satisfied: filelock in /u/ddong/miniconda3/envs/nanogpt/lib/python3.10/site-packages (from transformers) (3.13.1)
+Collecting huggingface-hub<1.0,>=0.34.0 (from transformers)
+  Downloading huggingface_hub-0.35.0-py3-none-any.whl.metadata (14 kB)
+Collecting packaging>=20.0 (from transformers)
+  Using cached packaging-25.0-py3-none-any.whl.metadata (3.3 kB)
+Collecting pyyaml>=5.1 (from transformers)
+  Downloading PyYAML-6.0.2-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (2.1 kB)
+Collecting regex!=2019.12.17 (from transformers)
+  Downloading regex-2025.9.18-cp310-cp310-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl.metadata (40 kB)
+Collecting requests (from transformers)
+  Using cached requests-2.32.5-py3-none-any.whl.metadata (4.9 kB)
+Collecting tokenizers<=0.23.0,>=0.22.0 (from transformers)
+  Downloading tokenizers-0.22.1-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (6.8 kB)
+Collecting safetensors>=0.4.3 (from transformers)
+  Downloading safetensors-0.6.2-cp38-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (4.1 kB)
+Requirement already satisfied: fsspec>=2023.5.0 in /u/ddong/miniconda3/envs/nanogpt/lib/python3.10/site-packages (from huggingface-hub<1.0,>=0.34.0->transformers) (2024.6.1)
+Requirement already satisfied: typing-extensions>=3.7.4.3 in /u/ddong/miniconda3/envs/nanogpt/lib/python3.10/site-packages (from huggingface-hub<1.0,>=0.34.0->transformers) (4.12.2)
+Collecting hf-xet<2.0.0,>=1.1.3 (from huggingface-hub<1.0,>=0.34.0->transformers)
+  Downloading hf_xet-1.1.10-cp37-abi3-manylinux_2_28_aarch64.whl.metadata (4.7 kB)
+Collecting pyarrow>=21.0.0 (from datasets)
+  Downloading pyarrow-21.0.0-cp310-cp310-manylinux_2_28_aarch64.whl.metadata (3.3 kB)
+Collecting dill<0.4.1,>=0.3.0 (from datasets)
+  Downloading dill-0.4.0-py3-none-any.whl.metadata (10 kB)
+Collecting pandas (from datasets)
+  Downloading pandas-2.3.2-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (91 kB)
+Collecting xxhash (from datasets)
+  Downloading xxhash-3.5.0-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (12 kB)
+Collecting multiprocess<0.70.17 (from datasets)
+  Downloading multiprocess-0.70.16-py310-none-any.whl.metadata (7.2 kB)
+Collecting aiohttp!=4.0.0a0,!=4.0.0a1 (from fsspec[http]<=2025.9.0,>=2023.1.0->datasets)
+  Downloading aiohttp-3.12.15-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (7.7 kB)
+Collecting click>=8.0.1 (from wandb)
+  Downloading click-8.3.0-py3-none-any.whl.metadata (2.6 kB)
+Collecting gitpython!=3.1.29,>=1.0.0 (from wandb)
+  Using cached gitpython-3.1.45-py3-none-any.whl.metadata (13 kB)
+Collecting platformdirs (from wandb)
+  Using cached platformdirs-4.4.0-py3-none-any.whl.metadata (12 kB)
+Collecting protobuf!=4.21.0,!=5.28.0,<7,>=3.19.0 (from wandb)
+  Downloading protobuf-6.32.1-cp39-abi3-manylinux2014_aarch64.whl.metadata (593 bytes)
+Collecting pydantic<3 (from wandb)
+  Downloading pydantic-2.11.9-py3-none-any.whl.metadata (68 kB)
+Collecting sentry-sdk>=2.0.0 (from wandb)
+  Downloading sentry_sdk-2.38.0-py2.py3-none-any.whl.metadata (10 kB)
+Collecting annotated-types>=0.6.0 (from pydantic<3->wandb)
+  Using cached annotated_types-0.7.0-py3-none-any.whl.metadata (15 kB)
+Collecting pydantic-core==2.33.2 (from pydantic<3->wandb)
+  Downloading pydantic_core-2.33.2-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (6.8 kB)
+Collecting typing-inspection>=0.4.0 (from pydantic<3->wandb)
+  Using cached typing_inspection-0.4.1-py3-none-any.whl.metadata (2.6 kB)
+Collecting charset_normalizer<4,>=2 (from requests->transformers)
+  Downloading charset_normalizer-3.4.3-cp310-cp310-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl.metadata (36 kB)
+Collecting idna<4,>=2.5 (from requests->transformers)
+  Using cached idna-3.10-py3-none-any.whl.metadata (10 kB)
+Collecting urllib3<3,>=1.21.1 (from requests->transformers)
+  Using cached urllib3-2.5.0-py3-none-any.whl.metadata (6.5 kB)
+Collecting certifi>=2017.4.17 (from requests->transformers)
+  Using cached certifi-2025.8.3-py3-none-any.whl.metadata (2.4 kB)
+Collecting aiohappyeyeballs>=2.5.0 (from aiohttp!=4.0.0a0,!=4.0.0a1->fsspec[http]<=2025.9.0,>=2023.1.0->datasets)
+  Downloading aiohappyeyeballs-2.6.1-py3-none-any.whl.metadata (5.9 kB)
+Collecting aiosignal>=1.4.0 (from aiohttp!=4.0.0a0,!=4.0.0a1->fsspec[http]<=2025.9.0,>=2023.1.0->datasets)
+  Downloading aiosignal-1.4.0-py3-none-any.whl.metadata (3.7 kB)
+Collecting async-timeout<6.0,>=4.0 (from aiohttp!=4.0.0a0,!=4.0.0a1->fsspec[http]<=2025.9.0,>=2023.1.0->datasets)
+  Downloading async_timeout-5.0.1-py3-none-any.whl.metadata (5.1 kB)
+Collecting attrs>=17.3.0 (from aiohttp!=4.0.0a0,!=4.0.0a1->fsspec[http]<=2025.9.0,>=2023.1.0->datasets)
+  Downloading attrs-25.3.0-py3-none-any.whl.metadata (10 kB)
+Collecting frozenlist>=1.1.1 (from aiohttp!=4.0.0a0,!=4.0.0a1->fsspec[http]<=2025.9.0,>=2023.1.0->datasets)
+  Downloading frozenlist-1.7.0-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (18 kB)
+Collecting multidict<7.0,>=4.5 (from aiohttp!=4.0.0a0,!=4.0.0a1->fsspec[http]<=2025.9.0,>=2023.1.0->datasets)
+  Downloading multidict-6.6.4-cp310-cp310-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl.metadata (5.3 kB)
+Collecting propcache>=0.2.0 (from aiohttp!=4.0.0a0,!=4.0.0a1->fsspec[http]<=2025.9.0,>=2023.1.0->datasets)
+  Downloading propcache-0.3.2-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (12 kB)
+Collecting yarl<2.0,>=1.17.0 (from aiohttp!=4.0.0a0,!=4.0.0a1->fsspec[http]<=2025.9.0,>=2023.1.0->datasets)
+  Downloading yarl-1.20.1-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (73 kB)
+Collecting gitdb<5,>=4.0.1 (from gitpython!=3.1.29,>=1.0.0->wandb)
+  Using cached gitdb-4.0.12-py3-none-any.whl.metadata (1.2 kB)
+Collecting smmap<6,>=3.0.1 (from gitdb<5,>=4.0.1->gitpython!=3.1.29,>=1.0.0->wandb)
+  Using cached smmap-5.0.2-py3-none-any.whl.metadata (4.3 kB)
+Collecting python-dateutil>=2.8.2 (from pandas->datasets)
+  Using cached python_dateutil-2.9.0.post0-py2.py3-none-any.whl.metadata (8.4 kB)
+Collecting pytz>=2020.1 (from pandas->datasets)
+  Using cached pytz-2025.2-py2.py3-none-any.whl.metadata (22 kB)
+Collecting tzdata>=2022.7 (from pandas->datasets)
+  Using cached tzdata-2025.2-py2.py3-none-any.whl.metadata (1.4 kB)
+Collecting six>=1.5 (from python-dateutil>=2.8.2->pandas->datasets)
+  Using cached six-1.17.0-py2.py3-none-any.whl.metadata (1.7 kB)
+Downloading numpy-2.2.6-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (14.3 MB)
+   [38;5;70m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[39m [32m14.3/14.3 MB[39m [31m63.8 MB/s[39m  [33m0:00:00
+[39mDownloading transformers-4.56.2-py3-none-any.whl (11.6 MB)
+   [38;5;70m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[39m [32m11.6/11.6 MB[39m [31m74.2 MB/s[39m  [33m0:00:00
+[39mDownloading huggingface_hub-0.35.0-py3-none-any.whl (563 kB)
+   [38;5;70m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[39m [32m563.4/563.4 kB[39m [31m18.0 MB/s[39m  [33m0:00:00
+[39mDownloading hf_xet-1.1.10-cp37-abi3-manylinux_2_28_aarch64.whl (3.1 MB)
+   [38;5;70m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[39m [32m3.1/3.1 MB[39m [31m59.4 MB/s[39m  [33m0:00:00
+[39mDownloading tokenizers-0.22.1-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (3.3 MB)
+   [38;5;70m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[39m [32m3.3/3.3 MB[39m [31m60.5 MB/s[39m  [33m0:00:00
+[39mDownloading datasets-4.1.1-py3-none-any.whl (503 kB)
+Downloading dill-0.4.0-py3-none-any.whl (119 kB)
+Downloading multiprocess-0.70.16-py310-none-any.whl (134 kB)
+Downloading tiktoken-0.11.0-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (1.1 MB)
+   [38;5;70m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[39m [32m1.1/1.1 MB[39m [31m35.9 MB/s[39m  [33m0:00:00
+[39mDownloading wandb-0.22.0-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (18.1 MB)
+   [38;5;70m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[39m [32m18.1/18.1 MB[39m [31m63.5 MB/s[39m  [33m0:00:00
+[39mDownloading protobuf-6.32.1-cp39-abi3-manylinux2014_aarch64.whl (322 kB)
+Downloading pydantic-2.11.9-py3-none-any.whl (444 kB)
+Downloading pydantic_core-2.33.2-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (1.9 MB)
+   [38;5;70m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[39m [32m1.9/1.9 MB[39m [31m49.5 MB/s[39m  [33m0:00:00
+[39mUsing cached requests-2.32.5-py3-none-any.whl (64 kB)
+Downloading charset_normalizer-3.4.3-cp310-cp310-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl (147 kB)
+Using cached idna-3.10-py3-none-any.whl (70 kB)
+Using cached urllib3-2.5.0-py3-none-any.whl (129 kB)
+Using cached tqdm-4.67.1-py3-none-any.whl (78 kB)
+Downloading aiohttp-3.12.15-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (1.7 MB)
+   [38;5;70m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[39m [32m1.7/1.7 MB[39m [31m41.3 MB/s[39m  [33m0:00:00
+[39mDownloading async_timeout-5.0.1-py3-none-any.whl (6.2 kB)
+Downloading multidict-6.6.4-cp310-cp310-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl (242 kB)
+Downloading yarl-1.20.1-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (323 kB)
+Downloading aiohappyeyeballs-2.6.1-py3-none-any.whl (15 kB)
+Downloading aiosignal-1.4.0-py3-none-any.whl (7.5 kB)
+Using cached annotated_types-0.7.0-py3-none-any.whl (13 kB)
+Downloading attrs-25.3.0-py3-none-any.whl (63 kB)
+Using cached certifi-2025.8.3-py3-none-any.whl (161 kB)
+Downloading click-8.3.0-py3-none-any.whl (107 kB)
+Downloading frozenlist-1.7.0-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (224 kB)
+Using cached gitpython-3.1.45-py3-none-any.whl (208 kB)
+Using cached gitdb-4.0.12-py3-none-any.whl (62 kB)
+Using cached smmap-5.0.2-py3-none-any.whl (24 kB)
+Using cached packaging-25.0-py3-none-any.whl (66 kB)
+Downloading propcache-0.3.2-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (201 kB)
+Downloading pyarrow-21.0.0-cp310-cp310-manylinux_2_28_aarch64.whl (41.1 MB)
+   [38;5;70m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[39m [32m41.1/41.1 MB[39m [31m76.2 MB/s[39m  [33m0:00:00
+[39mDownloading PyYAML-6.0.2-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (718 kB)
+   [38;5;70m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[39m [32m718.5/718.5 kB[39m [31m25.2 MB/s[39m  [33m0:00:00
+[39mDownloading regex-2025.9.18-cp310-cp310-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl (780 kB)
+   [38;5;70m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[39m [32m780.5/780.5 kB[39m [31m26.5 MB/s[39m  [33m0:00:00
+[39mDownloading safetensors-0.6.2-cp38-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (473 kB)
+Downloading sentry_sdk-2.38.0-py2.py3-none-any.whl (370 kB)
+Using cached typing_inspection-0.4.1-py3-none-any.whl (14 kB)
+Downloading pandas-2.3.2-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (11.7 MB)
+   [38;5;70m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[39m [32m11.7/11.7 MB[39m [31m68.5 MB/s[39m  [33m0:00:00
+[39mUsing cached python_dateutil-2.9.0.post0-py2.py3-none-any.whl (229 kB)
+Using cached pytz-2025.2-py2.py3-none-any.whl (509 kB)
+Using cached six-1.17.0-py2.py3-none-any.whl (11 kB)
+Using cached tzdata-2025.2-py2.py3-none-any.whl (347 kB)
+Using cached platformdirs-4.4.0-py3-none-any.whl (18 kB)
+Downloading xxhash-3.5.0-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (220 kB)
+Installing collected packages: pytz, xxhash, urllib3, tzdata, typing-inspection, tqdm, smmap, six, safetensors, regex, pyyaml, pydantic-core, pyarrow, protobuf, propcache, platformdirs, packaging, numpy, multidict, idna, hf-xet, frozenlist, dill, click, charset_normalizer, certifi, attrs, async-timeout, annotated-types, aiohappyeyeballs, yarl, sentry-sdk, requests, python-dateutil, pydantic, multiprocess, gitdb, aiosignal, tiktoken, pandas, huggingface-hub, gitpython, aiohttp, wandb, tokenizers, transformers, datasets
+Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.12.15 aiosignal-1.4.0 annotated-types-0.7.0 async-timeout-5.0.1 attrs-25.3.0 certifi-2025.8.3 charset_normalizer-3.4.3 click-8.3.0 datasets-4.1.1 dill-0.4.0 frozenlist-1.7.0 gitdb-4.0.12 gitpython-3.1.45 hf-xet-1.1.10 huggingface-hub-0.35.0 idna-3.10 multidict-6.6.4 multiprocess-0.70.16 numpy-2.2.6 packaging-25.0 pandas-2.3.2 platformdirs-4.4.0 propcache-0.3.2 protobuf-6.32.1 pyarrow-21.0.0 pydantic-2.11.9 pydantic-core-2.33.2 python-dateutil-2.9.0.post0 pytz-2025.2 pyyaml-6.0.2 regex-2025.9.18 requests-2.32.5 safetensors-0.6.2 sentry-sdk-2.38.0 six-1.17.0 smmap-5.0.2 tiktoken-0.11.0 tokenizers-0.22.1 tqdm-4.67.1 transformers-4.56.2 typing-inspection-0.4.1 tzdata-2025.2 urllib3-2.5.0 wandb-0.22.0 xxhash-3.5.0 yarl-1.20.1
+(nanogpt) ddong@gh-login03:~/workspace/nanoGPT> python data/shakespeare_char/prepare.py                                                                                     
+length of dataset in characters: 1,115,394
+all the unique characters: 
+ !$&',-.3:;?ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz
+vocab size: 65
+train has 1,003,854 tokens
+val has 111,540 tokens
+(nanogpt) ddong@gh-login03:~/workspace/nanoGPT> srun -A bcrc-dtai-gh --qos=bcrc-dtai-gh -p ghx4 -t 4:00:00 --nodes=1 --ntasks-per-node=1 --cpus-per-task=16 --gres=gpu:h100:1 --mem=256g --pty bash -i                                                                                                                                                  
+srun: job 970855 queued and waiting for resources
+srun: job 970855 has been allocated resources
+(base) ddong@gh098:~/workspace/nanoGPT> module load cuda/12.6.1
+
+Lmod is automatically replacing "gcc/11.4.0" with "gcc-native/12.3".
+
+AWS OFI NCCL Plugin v1.6.0 loaded for CUDA 12.6.1
+This provides network transport ONLY - NCCL library from PyTorch
+Configured for Slingshot11/CXI interconnect
+CUDA 12.6.1 loaded with compatible AWS OFI NCCL plugin v1.6.0
+Plugin provides network transport - NCCL library from PyTorch
+Use with python/miniforge3_pytorch/2.7.0 or equivalent for best compatibility
+
+Activating Modules:
+  1) cray-libsci/24.07.0     2) cray-mpich/8.1.30
+
+(base) ddong@gh098:~/workspace/nanoGPT> module load gcc/11.4.0
+
+Lmod is automatically replacing "gcc-native/12.3" with "gcc/11.4.0".
+
+
+Inactive Modules:
+  1) cray-libsci     2) cray-mpich
+
+(base) ddong@gh098:~/workspace/nanoGPT> conda activate nanogpt
+(nanogpt) ddong@gh098:~/workspace/nanoGPT> python train.py config/train_shakespeare_char.py
+Overriding config with config/train_shakespeare_char.py:
+# train a miniature character-level shakespeare model
+# good for debugging and playing on macbooks and such
+
+out_dir = 'out-shakespeare-char'
+eval_interval = 250 # keep frequent because we'll overfit
+eval_iters = 200
+log_interval = 10 # don't print too too often
+
+# we expect to overfit on this small dataset, so only save when val improves
+always_save_checkpoint = False
+
+wandb_log = False # override via command line if you like
+wandb_project = 'shakespeare-char'
+wandb_run_name = 'mini-gpt'
+
+dataset = 'shakespeare_char'
+gradient_accumulation_steps = 1
+batch_size = 64
+block_size = 256 # context of up to 256 previous characters
+
+# baby GPT model :)
+n_layer = 6
+n_head = 6
+n_embd = 384
+dropout = 0.2
+
+learning_rate = 1e-3 # with baby networks can afford to go a bit higher
+max_iters = 5000
+lr_decay_iters = 5000 # make equal to max_iters usually
+min_lr = 1e-4 # learning_rate / 10 usually
+beta2 = 0.99 # make a bit bigger because number of tokens per iter is small
+
+warmup_iters = 100 # not super necessary potentially
+
+# on macbook also add
+# device = 'cpu'  # run on cpu only
+compile = False # do not torch compile the model
+
+tokens per iteration will be: 16,384
+found vocab_size = 65 (inside data/shakespeare_char/meta.pkl)
+Initializing a new model from scratch
+number of parameters: 10.65M
+/u/ddong/workspace/nanoGPT/train.py:196: FutureWarning: `torch.cuda.amp.GradScaler(args...)` is deprecated. Please use `torch.amp.GradScaler('cuda', args...)` instead.
+  scaler = torch.cuda.amp.GradScaler(enabled=(dtype == 'float16'))
+num decayed parameter tensors: 26, with 10,740,096 parameters
+num non-decayed parameter tensors: 13, with 4,992 parameters
+using fused AdamW: True
+step 0: train loss 4.2874, val loss 4.2823
+iter 0: loss 4.2714, time 3520.31ms, mfu -100.00%
+iter 10: loss 3.1476, time 12.42ms, mfu 30.00%
+iter 20: loss 2.7333, time 12.17ms, mfu 30.06%
+iter 30: loss 2.6157, time 12.02ms, mfu 30.15%
+iter 40: loss 2.5761, time 12.08ms, mfu 30.22%
+iter 50: loss 2.5257, time 12.19ms, mfu 30.26%
+iter 60: loss 2.5101, time 12.18ms, mfu 30.29%
+iter 70: loss 2.4937, time 12.17ms, mfu 30.33%
+iter 80: loss 2.4949, time 12.14ms, mfu 30.36%
+iter 90: loss 2.4642, time 12.29ms, mfu 30.36%
+iter 100: loss 2.4559, time 12.06ms, mfu 30.41%
+iter 110: loss 2.4545, time 12.18ms, mfu 30.43%
+iter 120: loss 2.4294, time 12.05ms, mfu 30.48%
+iter 130: loss 2.4133, time 12.24ms, mfu 30.48%
+iter 140: loss 2.4042, time 12.19ms, mfu 30.49%
+iter 150: loss 2.4085, time 12.06ms, mfu 30.53%
+iter 160: loss 2.3676, time 12.12ms, mfu 30.55%
+iter 170: loss 2.3564, time 12.33ms, mfu 30.52%
+iter 180: loss 2.3013, time 12.19ms, mfu 30.52%
+iter 190: loss 2.2393, time 12.17ms, mfu 30.53%
+iter 200: loss 2.2029, time 11.99ms, mfu 30.59%
+iter 210: loss 2.1412, time 12.04ms, mfu 30.62%
+iter 220: loss 2.1340, time 12.06ms, mfu 30.65%
+iter 230: loss 2.0779, time 12.15ms, mfu 30.65%
+iter 240: loss 2.0766, time 12.06ms, mfu 30.68%
+step 250: train loss 1.9638, val loss 2.0642
+saving checkpoint to out-shakespeare-char
+iter 250: loss 2.0311, time 2550.40ms, mfu 27.62%
+iter 260: loss 1.9738, time 12.18ms, mfu 27.92%
+iter 270: loss 1.9675, time 12.07ms, mfu 28.22%
+iter 280: loss 1.9770, time 12.16ms, mfu 28.46%
+iter 290: loss 1.9155, time 12.28ms, mfu 28.65%
+iter 300: loss 1.8986, time 12.23ms, mfu 28.83%
+iter 310: loss 1.8706, time 12.10ms, mfu 29.02%
+iter 320: loss 1.8553, time 12.08ms, mfu 29.21%
+iter 330: loss 1.8150, time 12.08ms, mfu 29.37%
+iter 340: loss 1.7909, time 12.08ms, mfu 29.52%
+iter 350: loss 1.8252, time 12.64ms, mfu 29.52%
+iter 360: loss 1.7673, time 12.44ms, mfu 29.56%
+iter 370: loss 1.7454, time 12.31ms, mfu 29.63%
+iter 380: loss 1.7260, time 12.09ms, mfu 29.75%
+iter 390: loss 1.7299, time 12.19ms, mfu 29.83%
+iter 400: loss 1.7630, time 12.09ms, mfu 29.93%
+iter 410: loss 1.6932, time 12.27ms, mfu 29.97%
+iter 420: loss 1.7105, time 12.21ms, mfu 30.03%
+iter 430: loss 1.6837, time 12.24ms, mfu 30.07%
+iter 440: loss 1.6559, time 12.30ms, mfu 30.09%
+iter 450: loss 1.6497, time 12.18ms, mfu 30.14%
+iter 460: loss 1.5936, time 12.04ms, mfu 30.22%
+iter 470: loss 1.6571, time 12.12ms, mfu 30.27%
+iter 480: loss 1.6179, time 12.09ms, mfu 30.33%
+iter 490: loss 1.5913, time 12.30ms, mfu 30.33%
+step 500: train loss 1.5217, val loss 1.7301
+saving checkpoint to out-shakespeare-char
+iter 500: loss 1.6004, time 3461.56ms, mfu 27.31%
+iter 510: loss 1.6053, time 12.50ms, mfu 27.56%
+iter 520: loss 1.5869, time 12.23ms, mfu 27.85%
+iter 530: loss 1.5560, time 12.26ms, mfu 28.10%
+iter 540: loss 1.6128, time 12.18ms, mfu 28.35%
+iter 550: loss 1.5617, time 12.69ms, mfu 28.45%
+iter 560: loss 1.5615, time 12.19ms, mfu 28.66%
+iter 570: loss 1.5583, time 12.43ms, mfu 28.79%
+iter 580: loss 1.5294, time 12.08ms, mfu 29.00%
+iter 590: loss 1.4889, time 12.39ms, mfu 29.11%
+iter 600: loss 1.5138, time 12.60ms, mfu 29.15%
+iter 610: loss 1.5298, time 12.41ms, mfu 29.24%
+iter 620: loss 1.5307, time 12.17ms, mfu 29.38%
+iter 630: loss 1.5098, time 12.35ms, mfu 29.46%
+iter 640: loss 1.4556, time 12.11ms, mfu 29.59%
+iter 650: loss 1.4932, time 12.20ms, mfu 29.69%
+iter 660: loss 1.5016, time 12.46ms, mfu 29.71%
+iter 670: loss 1.4396, time 12.29ms, mfu 29.77%
+iter 680: loss 1.5061, time 12.05ms, mfu 29.88%
+iter 690: loss 1.4545, time 11.95ms, mfu 30.02%
+iter 700: loss 1.4737, time 12.20ms, mfu 30.07%
+iter 710: loss 1.4501, time 12.01ms, mfu 30.16%
+iter 720: loss 1.4389, time 12.25ms, mfu 30.19%
+iter 730: loss 1.4234, time 12.07ms, mfu 30.26%
+iter 740: loss 1.4216, time 12.05ms, mfu 30.32%
+step 750: train loss 1.3575, val loss 1.5861
+saving checkpoint to out-shakespeare-char
+iter 750: loss 1.4249, time 2676.89ms, mfu 27.30%
+iter 760: loss 1.4405, time 12.06ms, mfu 27.66%
+iter 770: loss 1.4230, time 12.26ms, mfu 27.94%
+iter 780: loss 1.3986, time 12.36ms, mfu 28.16%
+iter 790: loss 1.4194, time 12.10ms, mfu 28.42%
+iter 800: loss 1.4244, time 12.03ms, mfu 28.68%
+iter 810: loss 1.4000, time 12.07ms, mfu 28.90%
+iter 820: loss 1.4121, time 12.02ms, mfu 29.11%
+iter 830: loss 1.3884, time 12.18ms, mfu 29.25%
+iter 840: loss 1.3984, time 12.23ms, mfu 29.38%
+iter 850: loss 1.3865, time 12.03ms, mfu 29.54%
+iter 860: loss 1.3926, time 12.17ms, mfu 29.65%
+iter 870: loss 1.3907, time 12.09ms, mfu 29.76%
+iter 880: loss 1.3758, time 12.05ms, mfu 29.88%
+iter 890: loss 1.3853, time 12.13ms, mfu 29.96%
+iter 900: loss 1.3644, time 12.23ms, mfu 30.01%
+iter 910: loss 1.3147, time 12.28ms, mfu 30.05%
+iter 920: loss 1.3592, time 12.08ms, mfu 30.13%
+iter 930: loss 1.3596, time 12.35ms, mfu 30.13%
+iter 940: loss 1.3404, time 12.08ms, mfu 30.20%
+iter 950: loss 1.3488, time 12.08ms, mfu 30.27%
+iter 960: loss 1.3619, time 12.25ms, mfu 30.28%
+iter 970: loss 1.3582, time 12.05ms, mfu 30.35%
+iter 980: loss 1.3461, time 12.02ms, mfu 30.41%
+iter 990: loss 1.3352, time 12.10ms, mfu 30.45%
+step 1000: train loss 1.2701, val loss 1.5203
+saving checkpoint to out-shakespeare-char
+iter 1000: loss 1.3351, time 2646.91ms, mfu 27.42%
+iter 1010: loss 1.3384, time 12.41ms, mfu 27.68%
+iter 1020: loss 1.3077, time 12.27ms, mfu 27.95%
+iter 1030: loss 1.3355, time 12.21ms, mfu 28.20%
+iter 1040: loss 1.3564, time 12.40ms, mfu 28.39%
+iter 1050: loss 1.2869, time 12.32ms, mfu 28.57%
+iter 1060: loss 1.3379, time 12.66ms, mfu 28.66%
+iter 1070: loss 1.3342, time 12.15ms, mfu 28.86%
+iter 1080: loss 1.3318, time 12.06ms, mfu 29.07%
+iter 1090: loss 1.3464, time 12.20ms, mfu 29.21%
+iter 1100: loss 1.3153, time 12.00ms, mfu 29.40%
+iter 1110: loss 1.2979, time 12.09ms, mfu 29.54%
+iter 1120: loss 1.3029, time 12.31ms, mfu 29.61%
+iter 1130: loss 1.2924, time 12.15ms, mfu 29.72%
+iter 1140: loss 1.2999, time 12.15ms, mfu 29.81%
+iter 1150: loss 1.3020, time 11.97ms, mfu 29.94%
+iter 1160: loss 1.3272, time 12.15ms, mfu 30.02%
+iter 1170: loss 1.2986, time 12.16ms, mfu 30.08%
+iter 1180: loss 1.3087, time 12.06ms, mfu 30.16%
+iter 1190: loss 1.2608, time 12.30ms, mfu 30.18%
+iter 1200: loss 1.2894, time 12.07ms, mfu 30.25%
+iter 1210: loss 1.2652, time 12.20ms, mfu 30.28%
+iter 1220: loss 1.3068, time 12.10ms, mfu 30.33%
+iter 1230: loss 1.2998, time 11.99ms, mfu 30.40%
+iter 1240: loss 1.2930, time 12.31ms, mfu 30.39%
+step 1250: train loss 1.2017, val loss 1.4890
+saving checkpoint to out-shakespeare-char
+iter 1250: loss 1.2713, time 2853.62ms, mfu 27.36%
+iter 1260: loss 1.2832, time 12.22ms, mfu 27.68%
+iter 1270: loss 1.2678, time 12.11ms, mfu 27.99%
+iter 1280: loss 1.2520, time 12.16ms, mfu 28.25%
+iter 1290: loss 1.2852, time 12.26ms, mfu 28.47%
+iter 1300: loss 1.2956, time 12.15ms, mfu 28.68%
+iter 1310: loss 1.2377, time 12.20ms, mfu 28.87%
+iter 1320: loss 1.3061, time 12.04ms, mfu 29.08%
+iter 1330: loss 1.2633, time 12.32ms, mfu 29.19%
+iter 1340: loss 1.3004, time 12.07ms, mfu 29.36%
+iter 1350: loss 1.2593, time 12.56ms, mfu 29.39%
+iter 1360: loss 1.2744, time 12.41ms, mfu 29.46%
+iter 1370: loss 1.2542, time 12.29ms, mfu 29.54%
+iter 1380: loss 1.2582, time 12.16ms, mfu 29.65%
+iter 1390: loss 1.2509, time 12.13ms, mfu 29.76%
+iter 1400: loss 1.2585, time 12.00ms, mfu 29.89%
+iter 1410: loss 1.2562, time 12.13ms, mfu 29.97%
+iter 1420: loss 1.2705, time 12.03ms, mfu 30.07%
+iter 1430: loss 1.2427, time 12.24ms, mfu 30.11%
+iter 1440: loss 1.2563, time 12.15ms, mfu 30.17%
+iter 1450: loss 1.2297, time 12.40ms, mfu 30.15%
+iter 1460: loss 1.2486, time 12.19ms, mfu 30.20%
+iter 1470: loss 1.2212, time 11.99ms, mfu 30.28%
+iter 1480: loss 1.2117, time 12.13ms, mfu 30.33%
+iter 1490: loss 1.2360, time 12.29ms, mfu 30.33%
+step 1500: train loss 1.1531, val loss 1.4814
+saving checkpoint to out-shakespeare-char
+iter 1500: loss 1.1864, time 2658.29ms, mfu 27.31%
+iter 1510: loss 1.2345, time 11.84ms, mfu 27.73%
+iter 1520: loss 1.2195, time 12.28ms, mfu 27.99%
+iter 1530: loss 1.2561, time 12.07ms, mfu 28.28%
+iter 1540: loss 1.1985, time 12.22ms, mfu 28.50%
+iter 1550: loss 1.2332, time 12.33ms, mfu 28.67%
+iter 1560: loss 1.2111, time 12.02ms, mfu 28.90%
+iter 1570: loss 1.2372, time 12.14ms, mfu 29.08%
+iter 1580: loss 1.2026, time 12.18ms, mfu 29.23%
+iter 1590: loss 1.1916, time 12.23ms, mfu 29.36%
+iter 1600: loss 1.1960, time 12.13ms, mfu 29.49%
+iter 1610: loss 1.2375, time 12.23ms, mfu 29.59%
+iter 1620: loss 1.1826, time 12.00ms, mfu 29.73%
+iter 1630: loss 1.2038, time 12.36ms, mfu 29.78%
+iter 1640: loss 1.2102, time 12.12ms, mfu 29.87%
+iter 1650: loss 1.1783, time 11.97ms, mfu 30.00%
+iter 1660: loss 1.2219, time 12.25ms, mfu 30.04%
+iter 1670: loss 1.1982, time 12.27ms, mfu 30.07%
+iter 1680: loss 1.2076, time 12.12ms, mfu 30.14%
+iter 1690: loss 1.2083, time 12.11ms, mfu 30.20%
+iter 1700: loss 1.1900, time 12.21ms, mfu 30.23%
+iter 1710: loss 1.1793, time 12.13ms, mfu 30.28%
+iter 1720: loss 1.1819, time 12.14ms, mfu 30.33%
+iter 1730: loss 1.2017, time 12.13ms, mfu 30.37%
+iter 1740: loss 1.1737, time 12.17ms, mfu 30.39%
+step 1750: train loss 1.1022, val loss 1.4627
+saving checkpoint to out-shakespeare-char
+iter 1750: loss 1.1886, time 2645.20ms, mfu 27.37%
+iter 1760: loss 1.1886, time 12.28ms, mfu 27.66%
+iter 1770: loss 1.2006, time 12.16ms, mfu 27.96%
+iter 1780: loss 1.1916, time 12.22ms, mfu 28.21%
+iter 1790: loss 1.1879, time 11.90ms, mfu 28.52%
+iter 1800: loss 1.1874, time 12.01ms, mfu 28.77%
+iter 1810: loss 1.1622, time 12.17ms, mfu 28.96%
+iter 1820: loss 1.1666, time 11.88ms, mfu 29.20%
+iter 1830: loss 1.1691, time 12.06ms, mfu 29.37%
+iter 1840: loss 1.1635, time 12.19ms, mfu 29.49%
+iter 1850: loss 1.1583, time 12.07ms, mfu 29.63%
+iter 1860: loss 1.1767, time 12.23ms, mfu 29.71%
+iter 1870: loss 1.1436, time 12.13ms, mfu 29.81%
+iter 1880: loss 1.1821, time 12.12ms, mfu 29.90%
+iter 1890: loss 1.1803, time 12.11ms, mfu 29.99%
+iter 1900: loss 1.1353, time 12.17ms, mfu 30.05%
+iter 1910: loss 1.1756, time 12.17ms, mfu 30.11%
+iter 1920: loss 1.1753, time 12.15ms, mfu 30.17%
+iter 1930: loss 1.1433, time 12.21ms, mfu 30.20%
+iter 1940: loss 1.1303, time 12.19ms, mfu 30.24%
+iter 1950: loss 1.1413, time 12.18ms, mfu 30.27%
+iter 1960: loss 1.1558, time 12.14ms, mfu 30.31%
+iter 1970: loss 1.1513, time 11.92ms, mfu 30.41%
+iter 1980: loss 1.1545, time 12.06ms, mfu 30.46%
+iter 1990: loss 1.1500, time 11.95ms, mfu 30.53%
+step 2000: train loss 1.0584, val loss 1.4757
+iter 2000: loss 1.1270, time 3071.19ms, mfu 27.49%
+iter 2010: loss 1.1278, time 12.45ms, mfu 27.73%
+iter 2020: loss 1.1233, time 12.12ms, mfu 28.03%
+iter 2030: loss 1.1602, time 12.07ms, mfu 28.32%
+iter 2040: loss 1.1431, time 12.33ms, mfu 28.51%
+iter 2050: loss 1.1164, time 12.28ms, mfu 28.69%
+iter 2060: loss 1.1041, time 12.19ms, mfu 28.88%
+iter 2070: loss 1.1329, time 12.93ms, mfu 28.87%
+iter 2080: loss 1.1266, time 12.20ms, mfu 29.04%
+iter 2090: loss 1.1336, time 12.20ms, mfu 29.19%
+iter 2100: loss 1.1306, time 11.96ms, mfu 29.39%
+iter 2110: loss 1.1363, time 12.32ms, mfu 29.47%
+iter 2120: loss 1.1350, time 12.37ms, mfu 29.54%
+iter 2130: loss 1.1387, time 12.12ms, mfu 29.66%
+iter 2140: loss 1.1427, time 12.00ms, mfu 29.80%
+iter 2150: loss 1.1231, time 12.05ms, mfu 29.91%
+iter 2160: loss 1.1400, time 12.14ms, mfu 29.99%
+iter 2170: loss 1.1330, time 12.15ms, mfu 30.06%
+iter 2180: loss 1.1149, time 12.19ms, mfu 30.11%
+iter 2190: loss 1.1073, time 12.32ms, mfu 30.12%
+iter 2200: loss 1.1294, time 12.01ms, mfu 30.21%
+iter 2210: loss 1.1243, time 12.07ms, mfu 30.28%
+iter 2220: loss 1.1295, time 12.23ms, mfu 30.30%
+iter 2230: loss 1.1209, time 11.92ms, mfu 30.39%
+iter 2240: loss 1.1328, time 11.97ms, mfu 30.46%
+step 2250: train loss 1.0128, val loss 1.4754
+iter 2250: loss 1.1120, time 3478.52ms, mfu 27.43%
+iter 2260: loss 1.1086, time 12.19ms, mfu 27.74%
+iter 2270: loss 1.1322, time 12.00ms, mfu 28.08%
+iter 2280: loss 1.0989, time 12.10ms, mfu 28.35%
+iter 2290: loss 1.1422, time 12.31ms, mfu 28.54%
+iter 2300: loss 1.1258, time 12.44ms, mfu 28.68%
+iter 2310: loss 1.0948, time 12.20ms, mfu 28.87%
+iter 2320: loss 1.0992, time 12.15ms, mfu 29.05%
+iter 2330: loss 1.1005, time 11.91ms, mfu 29.27%
+iter 2340: loss 1.1191, time 12.04ms, mfu 29.44%
+iter 2350: loss 1.1102, time 12.44ms, mfu 29.49%
+iter 2360: loss 1.1090, time 12.21ms, mfu 29.59%
+iter 2370: loss 1.0886, time 12.21ms, mfu 29.68%
+iter 2380: loss 1.0815, time 12.36ms, mfu 29.73%
+iter 2390: loss 1.0812, time 12.26ms, mfu 29.79%
+iter 2400: loss 1.0873, time 12.08ms, mfu 29.90%
+iter 2410: loss 1.0737, time 12.17ms, mfu 29.97%
+iter 2420: loss 1.0838, time 12.15ms, mfu 30.04%
+iter 2430: loss 1.0561, time 11.96ms, mfu 30.15%
+iter 2440: loss 1.0624, time 12.17ms, mfu 30.20%
+iter 2450: loss 1.0796, time 12.14ms, mfu 30.25%
+iter 2460: loss 1.0866, time 12.21ms, mfu 30.27%
+iter 2470: loss 1.0901, time 12.20ms, mfu 30.30%
+iter 2480: loss 1.0835, time 12.04ms, mfu 30.37%
+iter 2490: loss 1.0634, time 11.94ms, mfu 30.45%
+step 2500: train loss 0.9638, val loss 1.4944
+iter 2500: loss 1.0866, time 2205.75ms, mfu 27.42%
+iter 2510: loss 1.0713, time 12.18ms, mfu 27.74%
+iter 2520: loss 1.0542, time 12.39ms, mfu 27.97%
+iter 2530: loss 1.0554, time 12.16ms, mfu 28.24%
+iter 2540: loss 1.0608, time 12.10ms, mfu 28.49%
+iter 2550: loss 1.0718, time 12.16ms, mfu 28.71%
+iter 2560: loss 1.0654, time 12.18ms, mfu 28.90%
+iter 2570: loss 1.0835, time 12.24ms, mfu 29.05%
+iter 2580: loss 1.0774, time 12.61ms, mfu 29.10%
+iter 2590: loss 1.0751, time 12.15ms, mfu 29.26%
+iter 2600: loss 1.0672, time 12.32ms, mfu 29.36%
+iter 2610: loss 1.0510, time 12.00ms, mfu 29.53%
+iter 2620: loss 1.0540, time 12.31ms, mfu 29.60%
+iter 2630: loss 1.0303, time 12.26ms, mfu 29.68%
+iter 2640: loss 1.0493, time 16.88ms, mfu 28.92%
+iter 2650: loss 1.0732, time 12.75ms, mfu 28.95%
+iter 2660: loss 1.0387, time 12.60ms, mfu 29.01%
+iter 2670: loss 1.0202, time 14.19ms, mfu 28.74%
+iter 2680: loss 1.0497, time 13.75ms, mfu 28.57%
+iter 2690: loss 1.0600, time 12.27ms, mfu 28.75%
+iter 2700: loss 1.0259, time 13.23ms, mfu 28.69%
+iter 2710: loss 1.0484, time 12.00ms, mfu 28.93%
+iter 2720: loss 1.0453, time 227.80ms, mfu 26.20%
+iter 2730: loss 1.0611, time 12.12ms, mfu 26.66%
+iter 2740: loss 1.0280, time 12.59ms, mfu 26.95%
+step 2750: train loss 0.9187, val loss 1.5082
+iter 2750: loss 1.0385, time 3494.41ms, mfu 24.26%
+iter 2760: loss 1.0404, time 12.22ms, mfu 24.89%
+iter 2770: loss 1.0268, time 12.23ms, mfu 25.45%
+iter 2780: loss 1.0290, time 12.00ms, mfu 26.01%
+iter 2790: loss 1.0430, time 12.25ms, mfu 26.45%
+iter 2800: loss 1.0224, time 12.10ms, mfu 26.88%
+iter 2810: loss 1.0447, time 12.19ms, mfu 27.25%
+iter 2820: loss 1.0264, time 12.50ms, mfu 27.51%
+iter 2830: loss 1.0376, time 12.71ms, mfu 27.69%
+iter 2840: loss 0.9989, time 443.47ms, mfu 25.00%
+iter 2850: loss 1.0273, time 12.35ms, mfu 25.52%
+iter 2860: loss 1.0281, time 12.07ms, mfu 26.06%
+iter 2870: loss 1.0123, time 12.06ms, mfu 26.54%
+iter 2880: loss 1.0382, time 12.15ms, mfu 26.95%
+iter 2890: loss 1.0160, time 12.26ms, mfu 27.30%
+iter 2900: loss 0.9958, time 12.03ms, mfu 27.66%
+iter 2910: loss 1.0365, time 12.91ms, mfu 27.78%
+iter 2920: loss 1.0136, time 12.38ms, mfu 28.02%
+iter 2930: loss 1.0008, time 12.22ms, mfu 28.26%
+iter 2940: loss 0.9884, time 12.05ms, mfu 28.53%
+iter 2950: loss 1.0302, time 12.34ms, mfu 28.70%
+iter 2960: loss 1.0023, time 12.86ms, mfu 28.72%
+iter 2970: loss 0.9962, time 12.22ms, mfu 28.90%
+iter 2980: loss 1.0050, time 12.07ms, mfu 29.10%
+iter 2990: loss 0.9859, time 12.17ms, mfu 29.25%
+step 3000: train loss 0.8727, val loss 1.5223
+iter 3000: loss 0.9836, time 3097.46ms, mfu 26.34%
+iter 3010: loss 0.9921, time 12.23ms, mfu 26.75%
+iter 3020: loss 1.0038, time 12.15ms, mfu 27.14%
+iter 3030: loss 1.0139, time 12.27ms, mfu 27.47%
+iter 3040: loss 1.0366, time 12.31ms, mfu 27.75%
+iter 3050: loss 0.9810, time 12.28ms, mfu 28.01%
+iter 3060: loss 1.0031, time 12.29ms, mfu 28.24%
+iter 3070: loss 1.0194, time 12.07ms, mfu 28.50%
+iter 3080: loss 0.9975, time 12.36ms, mfu 28.67%
+iter 3090: loss 0.9894, time 12.17ms, mfu 28.86%
+iter 3100: loss 0.9978, time 12.10ms, mfu 29.06%
+iter 3110: loss 0.9765, time 12.61ms, mfu 29.10%
+iter 3120: loss 1.0015, time 12.26ms, mfu 29.23%
+iter 3130: loss 0.9865, time 12.20ms, mfu 29.36%
+iter 3140: loss 0.9873, time 11.96ms, mfu 29.54%
+iter 3150: loss 1.0015, time 12.06ms, mfu 29.68%
+iter 3160: loss 1.0062, time 12.19ms, mfu 29.77%
+iter 3170: loss 0.9674, time 12.12ms, mfu 29.86%
+iter 3180: loss 0.9737, time 12.17ms, mfu 29.94%
+iter 3190: loss 1.0044, time 12.17ms, mfu 30.01%
+iter 3200: loss 0.9637, time 12.20ms, mfu 30.06%
+iter 3210: loss 0.9727, time 12.27ms, mfu 30.09%
+iter 3220: loss 0.9645, time 12.00ms, mfu 30.19%
+iter 3230: loss 0.9654, time 12.17ms, mfu 30.23%
+iter 3240: loss 0.9645, time 12.06ms, mfu 30.30%
+step 3250: train loss 0.8285, val loss 1.5549
+iter 3250: loss 0.9885, time 3063.21ms, mfu 27.28%
+iter 3260: loss 0.9630, time 12.09ms, mfu 27.63%
+iter 3270: loss 0.9787, time 12.07ms, mfu 27.96%
+iter 3280: loss 0.9547, time 12.03ms, mfu 28.26%
+iter 3290: loss 0.9467, time 12.12ms, mfu 28.51%
+iter 3300: loss 0.9528, time 12.36ms, mfu 28.67%
+iter 3310: loss 0.9588, time 12.15ms, mfu 28.87%
+iter 3320: loss 0.9751, time 12.50ms, mfu 28.96%
+iter 3330: loss 0.9616, time 12.15ms, mfu 29.14%
+iter 3340: loss 0.9526, time 12.50ms, mfu 29.20%
+iter 3350: loss 0.9598, time 12.01ms, mfu 29.38%
+iter 3360: loss 0.9378, time 12.01ms, mfu 29.55%
+iter 3370: loss 0.9615, time 12.34ms, mfu 29.61%
+iter 3380: loss 0.9416, time 12.33ms, mfu 29.67%
+iter 3390: loss 0.9555, time 12.12ms, mfu 29.78%
+iter 3400: loss 0.9631, time 12.46ms, mfu 29.79%
+iter 3410: loss 0.9544, time 12.48ms, mfu 29.80%
+iter 3420: loss 0.9642, time 12.17ms, mfu 29.88%
+iter 3430: loss 0.9422, time 12.10ms, mfu 29.97%
+iter 3440: loss 0.9860, time 12.62ms, mfu 29.93%
+iter 3450: loss 0.9636, time 12.21ms, mfu 29.98%
+iter 3460: loss 0.9549, time 12.45ms, mfu 29.98%
+iter 3470: loss 0.9454, time 12.51ms, mfu 29.96%
+iter 3480: loss 0.9575, time 12.46ms, mfu 29.95%
+iter 3490: loss 0.9279, time 12.13ms, mfu 30.03%
+step 3500: train loss 0.7873, val loss 1.5700
+iter 3500: loss 0.9083, time 2436.86ms, mfu 27.04%
+iter 3510: loss 0.9217, time 12.15ms, mfu 27.41%
+iter 3520: loss 0.9299, time 12.37ms, mfu 27.68%
+iter 3530: loss 0.9566, time 12.19ms, mfu 27.97%
+iter 3540: loss 0.9342, time 12.03ms, mfu 28.27%
+iter 3550: loss 0.9330, time 12.54ms, mfu 28.41%
+iter 3560: loss 0.9595, time 13.15ms, mfu 28.41%
+iter 3570: loss 0.9409, time 12.21ms, mfu 28.62%
+iter 3580: loss 0.9452, time 12.76ms, mfu 28.68%
+iter 3590: loss 0.9270, time 12.07ms, mfu 28.89%
+iter 3600: loss 0.9325, time 12.10ms, mfu 29.08%
+iter 3610: loss 0.9188, time 12.09ms, mfu 29.26%
+iter 3620: loss 0.9191, time 12.28ms, mfu 29.36%
+iter 3630: loss 0.9318, time 12.15ms, mfu 29.50%
+iter 3640: loss 0.9185, time 12.34ms, mfu 29.57%
+iter 3650: loss 0.9152, time 12.24ms, mfu 29.65%
+iter 3660: loss 0.9518, time 12.15ms, mfu 29.75%
+iter 3670: loss 0.9445, time 12.16ms, mfu 29.84%
+iter 3680: loss 0.9093, time 12.30ms, mfu 29.89%
+iter 3690: loss 0.9440, time 12.15ms, mfu 29.97%
+iter 3700: loss 0.8836, time 12.13ms, mfu 30.04%
+iter 3710: loss 0.8875, time 12.22ms, mfu 30.09%
+iter 3720: loss 0.9176, time 12.24ms, mfu 30.12%
+iter 3730: loss 0.9091, time 12.05ms, mfu 30.20%
+iter 3740: loss 0.9067, time 12.14ms, mfu 30.25%
+step 3750: train loss 0.7509, val loss 1.5937
+iter 3750: loss 0.8996, time 2644.23ms, mfu 27.24%
+iter 3760: loss 0.9355, time 12.30ms, mfu 27.54%
+iter 3770: loss 0.9404, time 12.08ms, mfu 27.87%
+iter 3780: loss 0.9230, time 12.06ms, mfu 28.18%
+iter 3790: loss 0.8987, time 12.10ms, mfu 28.44%
+iter 3800: loss 0.9212, time 12.93ms, mfu 28.48%
+iter 3810: loss 0.9212, time 12.04ms, mfu 28.72%
+iter 3820: loss 0.8863, time 12.21ms, mfu 28.90%
+iter 3830: loss 0.9080, time 12.72ms, mfu 28.94%
+iter 3840: loss 0.9014, time 12.24ms, mfu 29.09%
+iter 3850: loss 0.8957, time 12.21ms, mfu 29.24%
+iter 3860: loss 0.8774, time 12.08ms, mfu 29.40%
+iter 3870: loss 0.8987, time 12.75ms, mfu 29.38%
+iter 3880: loss 0.8940, time 12.40ms, mfu 29.45%
+iter 3890: loss 0.9065, time 12.57ms, mfu 29.47%
+iter 3900: loss 0.8986, time 12.21ms, mfu 29.57%
+iter 3910: loss 0.9005, time 12.08ms, mfu 29.70%
+iter 3920: loss 0.8798, time 12.09ms, mfu 29.81%
+iter 3930: loss 0.9021, time 12.09ms, mfu 29.91%
+iter 3940: loss 0.8863, time 13.75ms, mfu 29.63%
+iter 3950: loss 0.8870, time 12.17ms, mfu 29.73%
+iter 3960: loss 0.9221, time 12.35ms, mfu 29.78%
+iter 3970: loss 0.9039, time 12.12ms, mfu 29.87%
+iter 3980: loss 0.9062, time 12.12ms, mfu 29.96%
+iter 3990: loss 0.8865, time 11.93ms, mfu 30.09%
+step 4000: train loss 0.7162, val loss 1.6193
+iter 4000: loss 0.8655, time 2430.88ms, mfu 27.09%
+iter 4010: loss 0.8844, time 12.16ms, mfu 27.45%
+iter 4020: loss 0.8958, time 11.93ms, mfu 27.83%
+iter 4030: loss 0.8803, time 12.06ms, mfu 28.13%
+iter 4040: loss 0.8821, time 12.10ms, mfu 28.40%
+iter 4050: loss 0.8759, time 12.15ms, mfu 28.63%
+iter 4060: loss 0.8727, time 12.09ms, mfu 28.85%
+iter 4070: loss 0.8732, time 12.12ms, mfu 29.04%
+iter 4080: loss 0.8963, time 12.14ms, mfu 29.20%
+iter 4090: loss 0.8644, time 12.12ms, mfu 29.36%
+iter 4100: loss 0.9028, time 12.04ms, mfu 29.52%
+iter 4110: loss 0.8807, time 12.12ms, mfu 29.64%
+iter 4120: loss 0.8757, time 12.00ms, mfu 29.78%
+iter 4130: loss 0.8669, time 12.15ms, mfu 29.87%
+iter 4140: loss 0.8857, time 12.29ms, mfu 29.91%
+iter 4150: loss 0.8732, time 12.31ms, mfu 29.95%
+iter 4160: loss 0.8688, time 12.34ms, mfu 29.98%
+iter 4170: loss 0.8780, time 12.01ms, mfu 30.08%
+iter 4180: loss 0.8706, time 12.22ms, mfu 30.12%
+iter 4190: loss 0.8694, time 12.06ms, mfu 30.20%
+iter 4200: loss 0.8581, time 12.19ms, mfu 30.23%
+iter 4210: loss 0.8802, time 12.00ms, mfu 30.32%
+iter 4220: loss 0.8666, time 12.17ms, mfu 30.35%
+iter 4230: loss 0.8912, time 12.08ms, mfu 30.40%
+iter 4240: loss 0.8704, time 12.03ms, mfu 30.45%
+step 4250: train loss 0.6858, val loss 1.6435
+iter 4250: loss 0.8708, time 2207.34ms, mfu 27.42%
+iter 4260: loss 0.8613, time 12.21ms, mfu 27.73%
+iter 4270: loss 0.8679, time 12.09ms, mfu 28.04%
+iter 4280: loss 0.8560, time 12.06ms, mfu 28.33%
+iter 4290: loss 0.8415, time 12.11ms, mfu 28.57%
+iter 4300: loss 0.8258, time 12.19ms, mfu 28.77%
+iter 4310: loss 0.8557, time 12.18ms, mfu 28.95%
+iter 4320: loss 0.8447, time 11.96ms, mfu 29.17%
+iter 4330: loss 0.8677, time 12.04ms, mfu 29.35%
+iter 4340: loss 0.8396, time 12.07ms, mfu 29.50%
+iter 4350: loss 0.8464, time 12.21ms, mfu 29.60%
+iter 4360: loss 0.8685, time 12.19ms, mfu 29.70%
+iter 4370: loss 0.8611, time 12.38ms, mfu 29.74%
+iter 4380: loss 0.8477, time 11.91ms, mfu 29.89%
+iter 4390: loss 0.8771, time 12.10ms, mfu 29.98%
+iter 4400: loss 0.8614, time 12.08ms, mfu 30.07%
+iter 4410: loss 0.8703, time 12.21ms, mfu 30.12%
+iter 4420: loss 0.8690, time 12.23ms, mfu 30.15%
+iter 4430: loss 0.8533, time 12.17ms, mfu 30.20%
+iter 4440: loss 0.8524, time 12.18ms, mfu 30.24%
+iter 4450: loss 0.8536, time 12.20ms, mfu 30.27%
+iter 4460: loss 0.8397, time 12.14ms, mfu 30.31%
+iter 4470: loss 0.8523, time 12.20ms, mfu 30.33%
+iter 4480: loss 0.8429, time 11.96ms, mfu 30.42%
+iter 4490: loss 0.8585, time 12.11ms, mfu 30.45%
+step 4500: train loss 0.6629, val loss 1.6588
+iter 4500: loss 0.8659, time 2216.48ms, mfu 27.42%
+iter 4510: loss 0.8512, time 12.07ms, mfu 27.77%
+iter 4520: loss 0.8441, time 12.01ms, mfu 28.09%
+iter 4530: loss 0.8546, time 12.13ms, mfu 28.36%
+iter 4540: loss 0.8531, time 12.21ms, mfu 28.57%
+iter 4550: loss 0.8819, time 12.16ms, mfu 28.78%
+iter 4560: loss 0.8351, time 12.13ms, mfu 28.97%
+iter 4570: loss 0.8516, time 12.22ms, mfu 29.12%
+iter 4580: loss 0.8632, time 11.99ms, mfu 29.32%
+iter 4590: loss 0.8719, time 12.34ms, mfu 29.41%
+iter 4600: loss 0.8269, time 12.33ms, mfu 29.49%
+iter 4610: loss 0.8704, time 12.22ms, mfu 29.59%
+iter 4620: loss 0.8474, time 12.24ms, mfu 29.68%
+iter 4630: loss 0.8317, time 12.33ms, mfu 29.73%
+iter 4640: loss 0.8508, time 12.45ms, mfu 29.75%
+iter 4650: loss 0.8766, time 12.21ms, mfu 29.83%
+iter 4660: loss 0.8533, time 12.50ms, mfu 29.82%
+iter 4670: loss 0.8426, time 12.15ms, mfu 29.91%
+iter 4680: loss 0.8577, time 12.32ms, mfu 29.94%
+iter 4690: loss 0.8558, time 12.31ms, mfu 29.98%
+iter 4700: loss 0.8331, time 12.17ms, mfu 30.04%
+iter 4710: loss 0.8015, time 12.22ms, mfu 30.08%
+iter 4720: loss 0.8335, time 12.40ms, mfu 30.08%
+iter 4730: loss 0.8265, time 12.37ms, mfu 30.09%
+iter 4740: loss 0.8421, time 12.27ms, mfu 30.12%
+step 4750: train loss 0.6446, val loss 1.6769
+iter 4750: loss 0.8188, time 2262.30ms, mfu 27.12%
+iter 4760: loss 0.8216, time 12.49ms, mfu 27.39%
+iter 4770: loss 0.8094, time 12.37ms, mfu 27.67%
+iter 4780: loss 0.8205, time 12.40ms, mfu 27.90%
+iter 4790: loss 0.8522, time 12.10ms, mfu 28.19%
+iter 4800: loss 0.8315, time 12.38ms, mfu 28.38%
+iter 4810: loss 0.8352, time 12.49ms, mfu 28.53%
+iter 4820: loss 0.8244, time 12.34ms, mfu 28.69%
+iter 4830: loss 0.8300, time 12.18ms, mfu 28.88%
+iter 4840: loss 0.8442, time 12.40ms, mfu 29.00%
+iter 4850: loss 0.8345, time 12.39ms, mfu 29.11%
+iter 4860: loss 0.8237, time 12.03ms, mfu 29.29%
+iter 4870: loss 0.8187, time 12.16ms, mfu 29.43%
+iter 4880: loss 0.8363, time 12.19ms, mfu 29.54%
+iter 4890: loss 0.8198, time 12.29ms, mfu 29.62%
+iter 4900: loss 0.8156, time 12.33ms, mfu 29.68%
+iter 4910: loss 0.8341, time 12.32ms, mfu 29.74%
+iter 4920: loss 0.8262, time 12.44ms, mfu 29.76%
+iter 4930: loss 0.8130, time 12.22ms, mfu 29.83%
+iter 4940: loss 0.8096, time 12.42ms, mfu 29.85%
+iter 4950: loss 0.8373, time 12.45ms, mfu 29.86%
+iter 4960: loss 0.8353, time 12.52ms, mfu 29.85%
+iter 4970: loss 0.7957, time 12.34ms, mfu 29.88%
+iter 4980: loss 0.8014, time 12.24ms, mfu 29.94%
+iter 4990: loss 0.8311, time 12.33ms, mfu 29.97%
+step 5000: train loss 0.6296, val loss 1.6980
+iter 5000: loss 0.8360, time 2260.00ms, mfu 26.99%
+(nanogpt) ddong@gh-login03:~/workspace/nanoGPT> tmux capture-pane -p -e -J -S - -E - > tmux-pane-color-$(date +%F_%H%M%S).log
+"""
+story.append(Preformatted(wrap_block(placeholder, 140), styles['CodeMono']))
+
+doc.build(story)
+
+output_path
