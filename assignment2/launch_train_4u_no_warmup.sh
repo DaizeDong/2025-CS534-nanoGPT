@@ -23,5 +23,6 @@ mkdir -p logs runs
 #################################
 # 1) LAUNCH TRAINING
 #################################
-python train.py config/train_shakespeare_char.py \
-  --csv_path=runs/losses.csv | tee -a logs/train.log
+torchrun --standalone --nproc_per_node=4 \
+  train.py config/train_shakespeare_char_4u_no_warmup.py \
+    --csv_path=runs/losses_4u_no_warmup.csv  | tee -a logs/train_4u_no_warmup.log

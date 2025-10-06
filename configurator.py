@@ -20,15 +20,15 @@ from ast import literal_eval
 for arg in sys.argv[1:]:
     if '=' not in arg:
         # assume it's the name of a config file
-        assert not arg.startswith('--')
+        assert not arg.startswith('--'), f"illegal arg: {arg}"
         config_file = arg
         print(f"Overriding config with {config_file}:")
-        with open(config_file) as f:
-            print(f.read())
+        # with open(config_file) as f:
+        #     print(f.read())
         exec(open(config_file).read())
     else:
         # assume it's a --key=value argument
-        assert arg.startswith('--')
+        assert arg.startswith('--'), f"illegal arg: {arg}"
         key, val = arg.split('=')
         key = key[2:]
         if key in globals():
