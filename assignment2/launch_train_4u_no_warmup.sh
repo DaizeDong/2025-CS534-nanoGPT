@@ -1,4 +1,5 @@
 #!/bin/bash
+# srun -A bcrc-dtai-gh --qos=bcrc-dtai-gh -p ghx4 -t 12:00:00 --nodes=1 --ntasks-per-node=1 --cpus-per-task=128 --gres=gpu:h100:4 --mem=512g --pty bash -i
 
 set -euo pipefail
 

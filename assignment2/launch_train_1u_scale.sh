@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# assignment2/launch_train_1u_scale.sh
-# Fix GPU grouping (parse ONLY small integer indices), support decimal scale,
-# round BS to int (>=1), LR to 3 decimals, and pack multiple DDP jobs.
-# Keep it simple and runnable.
+# srun -A bcrc-dtai-gh --qos=bcrc-dtai-gh -p ghx4 -t 12:00:00 --nodes=1 --ntasks-per-node=1 --cpus-per-task=128 --gres=gpu:h100:4 --mem=512g --pty bash -i
 
 set -euo pipefail
 
