@@ -6,6 +6,7 @@ https://github.com/openai/gpt-2/blob/master/src/model.py
 2) huggingface/transformers PyTorch implementation:
 https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py
 """
+from typing import Optional, List, Tuple
 
 import math
 import inspect
@@ -147,6 +148,62 @@ class GPT(nn.Module):
         # report number of parameters
         print("number of parameters: %.2fM" % (self.get_num_params()/1e6,))
 
+        # model parallel
+        self._mp_devices: Optional[List[torch.device]] = None
+        self._mp_stage_block_ranges: Optional[List[Tuple[int, int]]] = None
+        self._mp_split_size = 0  # 0 for disabling
+
+    def configure_model_parallel(self, num_stages: Optional[int]):
+        """Pipeline parallel"""
+        # Embeddings & lm_head: GPU 0
+        # Blocks: split across GPUs
+        # LayerNorm: lsat GPU
+        if num_stages is None or num_stages <= 1: # disable
+            self._mp_devices = None
+            self._mp_stage_block_ranges = None
+            print("Model parallel disabled")
+
+        else: # enable
+            # get configs
+            # devices
+            stages = min(num_stages, self.config.n_layer)
+            if stages > torch.cuda.device_count():
+                raise ValueError(f"Requested {stages} stages but only {torch.cuda.device_count()} CUDA devices available")
+            self._mp_devices = [torch.device(f"cuda:{i}") for i in list(range(stages))]
+            print(f"Configuring model parallel with {stages} stages on devices: {[str(d) for d in self._mp_devices]}")
+
+            # block ranges per stage
+            base = self.config.n_layer // stages
+            remain = self.config.n_layer % stages
+            ranges = []
+            start = 0
+            for i in range(stages):
+                length = base + (1 if i < remain else 0)
+                end = start + length
+                ranges.append((start, end))
+                start = end
+            self._mp_stage_block_ranges = ranges
+            print(f"Model parallel stage block ranges: {self._mp_stage_block_ranges}")
+
+            # move weights
+            # embeddings & lm_head
+            self.transformer.wte.to(self._mp_devices[0])
+            self.transformer.wpe.to(self._mp_devices[0])
+            self.transformer.drop.to(self._mp_devices[0])
+            self.lm_head.to(self._mp_devices[0])
+            print(f"Moved embeddings and lm_head to device: {self._mp_devices[0]}")
+
+            # blocks
+            for i, (start, end) in enumerate(ranges):
+                device = self._mp_devices[i]
+                for j in range(start, end):
+                    self.transformer.h[j].to(device)
+                    print(f"Moved block {j} to device: {device}")
+
+            # layernorm
+            self.transformer.ln_f.to(self._mp_devices[-1])
+            print(f"Moved ln_f to device: {self._mp_devices[-1]}")
+
     def get_num_params(self, non_embedding=True):
         """
         Return the number of parameters in the model.
@@ -168,26 +225,122 @@ class GPT(nn.Module):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
     def forward(self, idx, targets=None):
-        device = idx.device
+        """model parallel supported"""
+        mp_enabled = self._mp_devices is not None and len(self._mp_devices) > 1
         b, t = idx.size()
         assert t <= self.config.block_size, f"Cannot forward sequence of length {t}, block size is only {self.config.block_size}"
-        pos = torch.arange(0, t, dtype=torch.long, device=device) # shape (t)
 
         # forward the GPT model itself
-        tok_emb = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
-        pos_emb = self.transformer.wpe(pos) # position embeddings of shape (t, n_embd)
-        x = self.transformer.drop(tok_emb + pos_emb)
-        for block in self.transformer.h:
-            x = block(x)
-        x = self.transformer.ln_f(x)
+        if not mp_enabled:
+            pos = torch.arange(0, t, dtype=torch.long, device=idx.device)  # shape (t)
+            tok_emb = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
+            pos_emb = self.transformer.wpe(pos) # position embeddings of shape (t, n_embd)
+            x = self.transformer.drop(tok_emb + pos_emb)
+            for block in self.transformer.h:
+                x = block(x)
+            x = self.transformer.ln_f(x)
+
+        else:
+            # pipeline parallel
+            num_stages = len(self._mp_devices)
+            split_size = int(self._mp_split_size or 0)
+            first_device = self._mp_devices[0]
+            last_device = self._mp_devices[-1]
+
+            # position embeddings
+            pos = torch.arange(0, t, dtype=torch.long, device=first_device)  # shape (t)
+
+            def _run_stage(x_in, stage_idx: int):
+                """Execute all transformer blocks belonging to one stage."""
+                device = self._mp_devices[stage_idx]
+                start, end = self._mp_stage_block_ranges[stage_idx]
+                for li in range(start, end):
+                    x_in = self.transformer.h[li](x_in.to(device))
+                return x_in
+
+            if split_size > 0:
+                # forward with micro-batching
+                idx = idx.to(first_device)
+                pos_emb = self.transformer.wpe(pos)  # same for all micro-batches
+
+                # Split batch into micro-batches along batch dimension
+                micro_batches = list(torch.split(idx, split_size, dim=0))
+                num_micros = len(micro_batches)
+                num_ticks = num_micros + num_stages - 1 # total ticks to process all micro-batches
+
+                # Buffers to hold activations between stages
+                stage_buffers = [{} for _ in range(num_stages)]
+                outputs = [None] * num_micros
+
+                # Iterate over pipeline ticks
+                # x x x x x x x x
+                #   x x x x x x x x
+                #     x x x x x x x x
+                #       x x x x x x x x
+                for tick in range(num_ticks):
+                    for stage in range(num_stages):
+                        micro_id = tick - stage
+                        if micro_id < 0 or micro_id >= num_micros:
+                            continue
+
+                        if stage == 0:
+                            # embeddings + its own transformer blocks
+                            mb_idx = micro_batches[micro_id]
+                            tok_emb = self.transformer.wte(mb_idx)
+                            x = self.transformer.drop(tok_emb + pos_emb)
+                            x = _run_stage(x, 0)
+                            if num_stages == 1:
+                                # Single stage: directly apply final layernorm
+                                x = self.transformer.ln_f(x.to(first_device))
+                                outputs[micro_id] = x
+                            else:
+                                # Send to next stage device
+                                next_device = self._mp_devices[1]
+                                stage_buffers[0][micro_id] = x.to(next_device)
+                        else:
+                            # intermediate or last stage
+                            x = stage_buffers[stage - 1].pop(micro_id)
+                            x = _run_stage(x, stage)
+
+                            if stage == num_stages - 1:
+                                # Final stage: apply final layernorm
+                                x = self.transformer.ln_f(x.to(last_device))
+                                outputs[micro_id] = x
+                            else:
+                                # Pass activation to next stage
+                                next_device = self._mp_devices[stage + 1]
+                                stage_buffers[stage][micro_id] = x.to(next_device)
+
+                # concat micro-batch outputs
+                x = torch.cat(outputs, dim=0).to(last_device)
+
+            else:  # no micro-batching
+                # embeddings
+                tok_emb = self.transformer.wte(idx.to(first_device))
+                pos_emb = self.transformer.wpe(pos)
+                x = self.transformer.drop(tok_emb + pos_emb)
+                # transformer blocks
+                for i in range(num_stages):
+                    x = _run_stage(x, i)
+                # final layernorm on last device
+                x = self.transformer.ln_f(x.to(last_device))
 
         if targets is not None:
             # if we are given some desired targets also calculate the loss
-            logits = self.lm_head(x)
+            if mp_enabled:
+                # compute head on device 0 to preserve weight tying with wte
+                logits = self.lm_head(x.to(first_device))
+                if targets.device != first_device:
+                    targets = targets.to(first_device)
+            else:
+                logits = self.lm_head(x)
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
         else:
             # inference-time mini-optimization: only forward the lm_head on the very last position
-            logits = self.lm_head(x[:, [-1], :]) # note: using list [-1] to preserve the time dim
+            if mp_enabled:
+                logits = self.lm_head(x.to(first_device)[:, [-1], :])
+            else:
+                logits = self.lm_head(x[:, [-1], :]) # note: using list [-1] to preserve the time dim
             loss = None
 
         return logits, loss

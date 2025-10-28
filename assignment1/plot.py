@@ -42,6 +42,7 @@ RE_ITER = re.compile(
         loss\s+([0-9]*\.?[0-9]+)
         (?:,\s*time\s+[0-9]*\.?[0-9]+ms)?
         (?:,\s*mfu\s+[0-9]*\.?[0-9]+%)?
+        (?:,\s*mem\s+[0-9]*\.?[0-9]+GB)?
         """,
     re.IGNORECASE | re.VERBOSE,
 )

@@ -1,0 +1,163 @@
+Overriding config with config/train_shakespeare_char_large_bs_mp6.py:
+Overriding: csv_path = runs/losses_large_bs_mp6.csv
+tokens per iteration will be: 131,072
+effective global batch size (sequences) will be: 512
+Initializing a new model from scratch
+number of parameters: 10.65M
+Model parallel enabled across 6 stages on devices: ['cuda:0', 'cuda:1', 'cuda:2', 'cuda:3', 'cuda:4', 'cuda:5']
+num decayed parameter tensors: 26, with 10,740,096 parameters
+num non-decayed parameter tensors: 13, with 4,992 parameters
+using fused AdamW: True
+[auto-tune] candidates: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512]
+[auto-tune] split_size=1 => 56.340s
+[auto-tune] split_size=2 => 27.823s
+[auto-tune] split_size=4 => 13.897s
+[auto-tune] split_size=8 => 6.956s
+[auto-tune] split_size=16 => 3.728s
+[auto-tune] split_size=32 => 2.090s
+[auto-tune] split_size=64 => 1.280s
+[auto-tune] split_size=128 => 1.795s
+[auto-tune] split_size=256 => 2.738s
+[auto-tune] split_size=512 => 2.545s
+[auto-tune] best split_size = 64 (time 1.280s)
+[auto-tune] reinitializing model and optimizer for clean training start
+number of parameters: 10.65M
+Model parallel enabled across 6 stages on devices: ['cuda:0', 'cuda:1', 'cuda:2', 'cuda:3', 'cuda:4', 'cuda:5']
+num decayed parameter tensors: 26, with 10,740,096 parameters
+num non-decayed parameter tensors: 13, with 4,992 parameters
+using fused AdamW: True
+step 0: train loss 4.2749, val loss 4.2750
+iter 0: loss 4.2633, time 18210.40ms, mfu -100.00%, mem 2.38GB
+iter 10: loss 2.9164, time 65.30ms, mfu 45.65%, mem 2.40GB
+iter 20: loss 2.6137, time 79.21ms, mfu 44.85%, mem 2.40GB
+iter 30: loss 2.5320, time 79.60ms, mfu 44.11%, mem 2.40GB
+iter 40: loss 2.5003, time 65.09ms, mfu 44.28%, mem 2.40GB
+step 50: train loss 2.4588, val loss 2.4660
+saving checkpoint to out/shakespeare-char
+iter 50: loss 2.4788, time 16292.39ms, mfu 39.87%, mem 2.40GB
+iter 60: loss 2.4552, time 79.34ms, mfu 39.64%, mem 2.40GB
+iter 70: loss 2.4590, time 79.23ms, mfu 39.44%, mem 2.40GB
+iter 80: loss 2.4303, time 66.31ms, mfu 39.99%, mem 2.40GB
+iter 90: loss 2.3986, time 78.71ms, mfu 39.78%, mem 2.40GB
+step 100: train loss 2.3767, val loss 2.4093
+saving checkpoint to out/shakespeare-char
+iter 100: loss 2.4163, time 16545.40ms, mfu 35.82%, mem 2.40GB
+iter 110: loss 2.3591, time 76.58ms, mfu 36.13%, mem 2.40GB
+iter 120: loss 2.2911, time 66.61ms, mfu 36.99%, mem 2.40GB
+iter 130: loss 2.2232, time 71.95ms, mfu 37.43%, mem 2.40GB
+iter 140: loss 2.1442, time 66.16ms, mfu 38.20%, mem 2.40GB
+step 150: train loss 2.0125, val loss 2.1114
+saving checkpoint to out/shakespeare-char
+iter 150: loss 2.0893, time 16599.40ms, mfu 34.39%, mem 2.40GB
+iter 160: loss 2.0314, time 79.63ms, mfu 34.70%, mem 2.40GB
+iter 170: loss 1.9781, time 66.12ms, mfu 35.74%, mem 2.40GB
+iter 180: loss 1.9223, time 75.49ms, mfu 36.11%, mem 2.40GB
+iter 190: loss 1.8953, time 78.73ms, mfu 36.29%, mem 2.40GB
+step 200: train loss 1.7578, val loss 1.9120
+saving checkpoint to out/shakespeare-char
+iter 200: loss 1.8519, time 16484.11ms, mfu 32.68%, mem 2.40GB
+iter 210: loss 1.8106, time 79.40ms, mfu 33.16%, mem 2.40GB
+iter 220: loss 1.7767, time 79.85ms, mfu 33.58%, mem 2.40GB
+iter 230: loss 1.7568, time 67.99ms, mfu 34.61%, mem 2.40GB
+iter 240: loss 1.7041, time 68.25ms, mfu 35.51%, mem 2.40GB
+step 250: train loss 1.6001, val loss 1.7756
+saving checkpoint to out/shakespeare-char
+iter 250: loss 1.6983, time 16305.84ms, mfu 31.98%, mem 2.40GB
+iter 260: loss 1.6739, time 80.12ms, mfu 32.50%, mem 2.40GB
+iter 270: loss 1.6451, time 141.19ms, mfu 31.36%, mem 2.40GB
+iter 280: loss 1.6289, time 80.74ms, mfu 31.92%, mem 2.40GB
+iter 290: loss 1.5956, time 82.25ms, mfu 32.35%, mem 2.40GB
+step 300: train loss 1.4956, val loss 1.6918
+saving checkpoint to out/shakespeare-char
+iter 300: loss 1.5928, time 16217.43ms, mfu 29.14%, mem 2.40GB
+iter 310: loss 1.5940, time 79.87ms, mfu 29.95%, mem 2.40GB
+iter 320: loss 1.5689, time 77.24ms, mfu 30.82%, mem 2.40GB
+iter 330: loss 1.5417, time 81.76ms, mfu 31.38%, mem 2.40GB
+iter 340: loss 1.5373, time 77.36ms, mfu 32.10%, mem 2.40GB
+step 350: train loss 1.4164, val loss 1.6349
+saving checkpoint to out/shakespeare-char
+iter 350: loss 1.5174, time 16658.85ms, mfu 28.91%, mem 2.40GB
+iter 360: loss 1.5138, time 79.95ms, mfu 29.74%, mem 2.40GB
+iter 370: loss 1.4897, time 73.33ms, mfu 30.83%, mem 2.40GB
+iter 380: loss 1.4662, time 68.37ms, mfu 32.11%, mem 2.40GB
+iter 390: loss 1.4721, time 72.03ms, mfu 33.04%, mem 2.40GB
+step 400: train loss 1.3438, val loss 1.5755
+saving checkpoint to out/shakespeare-char
+iter 400: loss 1.4430, time 16609.32ms, mfu 29.75%, mem 2.40GB
+iter 410: loss 1.4364, time 87.37ms, mfu 30.19%, mem 2.40GB
+iter 420: loss 1.4280, time 66.78ms, mfu 31.63%, mem 2.40GB
+iter 430: loss 1.4191, time 80.35ms, mfu 32.18%, mem 2.40GB
+iter 440: loss 1.3969, time 79.76ms, mfu 32.70%, mem 2.40GB
+step 450: train loss 1.2851, val loss 1.5283
+saving checkpoint to out/shakespeare-char
+iter 450: loss 1.3905, time 16652.80ms, mfu 29.45%, mem 2.40GB
+iter 460: loss 1.3876, time 84.31ms, mfu 30.04%, mem 2.40GB
+iter 470: loss 1.3930, time 84.26ms, mfu 30.57%, mem 2.40GB
+iter 480: loss 1.3641, time 84.03ms, mfu 31.06%, mem 2.40GB
+iter 490: loss 1.3497, time 65.38ms, mfu 32.52%, mem 2.40GB
+step 500: train loss 1.2347, val loss 1.5041
+saving checkpoint to out/shakespeare-char
+iter 500: loss 1.3363, time 16139.86ms, mfu 29.28%, mem 2.40GB
+iter 510: loss 1.3478, time 80.95ms, mfu 30.04%, mem 2.40GB
+iter 520: loss 1.3322, time 78.16ms, mfu 30.85%, mem 2.40GB
+iter 530: loss 1.3139, time 81.49ms, mfu 31.42%, mem 2.40GB
+iter 540: loss 1.3014, time 78.75ms, mfu 32.06%, mem 2.40GB
+step 550: train loss 1.1945, val loss 1.4987
+saving checkpoint to out/shakespeare-char
+iter 550: loss 1.2919, time 16410.27ms, mfu 28.88%, mem 2.40GB
+iter 560: loss 1.2946, time 80.79ms, mfu 29.68%, mem 2.40GB
+iter 570: loss 1.2836, time 62.83ms, mfu 31.45%, mem 2.40GB
+iter 580: loss 1.2655, time 64.10ms, mfu 32.96%, mem 2.40GB
+iter 590: loss 1.2693, time 66.21ms, mfu 34.17%, mem 2.40GB
+step 600: train loss 1.1526, val loss 1.4740
+saving checkpoint to out/shakespeare-char
+iter 600: loss 1.2583, time 16375.49ms, mfu 30.77%, mem 2.40GB
+iter 610: loss 1.2496, time 66.51ms, mfu 32.17%, mem 2.40GB
+iter 620: loss 1.2486, time 80.46ms, mfu 32.66%, mem 2.40GB
+iter 630: loss 1.2412, time 67.17ms, mfu 33.83%, mem 2.40GB
+iter 640: loss 1.2257, time 64.74ms, mfu 35.05%, mem 2.40GB
+step 650: train loss 1.1161, val loss 1.4795
+iter 650: loss 1.2250, time 16453.90ms, mfu 31.57%, mem 2.40GB
+iter 660: loss 1.2236, time 83.70ms, mfu 31.97%, mem 2.40GB
+iter 670: loss 1.2225, time 79.36ms, mfu 32.53%, mem 2.40GB
+iter 680: loss 1.2087, time 89.10ms, mfu 32.62%, mem 2.40GB
+iter 690: loss 1.1921, time 90.08ms, mfu 32.67%, mem 2.40GB
+step 700: train loss 1.0823, val loss 1.4660
+saving checkpoint to out/shakespeare-char
+iter 700: loss 1.2169, time 16246.27ms, mfu 29.42%, mem 2.40GB
+iter 710: loss 1.1868, time 67.37ms, mfu 30.90%, mem 2.40GB
+iter 720: loss 1.1844, time 68.53ms, mfu 32.16%, mem 2.40GB
+iter 730: loss 1.1886, time 68.33ms, mfu 33.31%, mem 2.40GB
+iter 740: loss 1.1825, time 73.23ms, mfu 34.05%, mem 2.40GB
+step 750: train loss 1.0457, val loss 1.4758
+iter 750: loss 1.1718, time 15927.32ms, mfu 30.66%, mem 2.40GB
+iter 760: loss 1.1774, time 64.82ms, mfu 32.20%, mem 2.40GB
+iter 770: loss 1.1664, time 65.07ms, mfu 33.56%, mem 2.40GB
+iter 780: loss 1.1485, time 83.45ms, mfu 33.77%, mem 2.40GB
+iter 790: loss 1.1431, time 88.16ms, mfu 33.78%, mem 2.40GB
+step 800: train loss 1.0104, val loss 1.4839
+iter 800: loss 1.1297, time 16040.49ms, mfu 30.42%, mem 2.40GB
+iter 810: loss 1.1449, time 82.81ms, mfu 30.98%, mem 2.40GB
+iter 820: loss 1.1302, time 78.84ms, mfu 31.66%, mem 2.40GB
+iter 830: loss 1.1287, time 81.79ms, mfu 32.14%, mem 2.40GB
+iter 840: loss 1.1181, time 64.56ms, mfu 33.54%, mem 2.40GB
+step 850: train loss 0.9725, val loss 1.5005
+iter 850: loss 1.1073, time 15819.08ms, mfu 30.21%, mem 2.40GB
+iter 860: loss 1.1137, time 82.02ms, mfu 30.82%, mem 2.40GB
+iter 870: loss 1.1003, time 79.32ms, mfu 31.50%, mem 2.40GB
+iter 880: loss 1.1106, time 80.46ms, mfu 32.05%, mem 2.40GB
+iter 890: loss 1.0922, time 79.90ms, mfu 32.58%, mem 2.40GB
+step 900: train loss 0.9291, val loss 1.5026
+iter 900: loss 1.0884, time 16113.42ms, mfu 29.34%, mem 2.40GB
+iter 910: loss 1.0887, time 79.64ms, mfu 30.15%, mem 2.40GB
+iter 920: loss 1.0727, time 81.82ms, mfu 30.78%, mem 2.40GB
+iter 930: loss 1.0746, time 79.64ms, mfu 31.44%, mem 2.40GB
+iter 940: loss 1.0566, time 80.38ms, mfu 32.01%, mem 2.40GB
+step 950: train loss 0.8975, val loss 1.5153
+iter 950: loss 1.0671, time 16079.10ms, mfu 28.82%, mem 2.40GB
+iter 960: loss 1.0512, time 80.18ms, mfu 29.66%, mem 2.40GB
+iter 970: loss 1.0501, time 77.96ms, mfu 30.52%, mem 2.40GB
+iter 980: loss 1.0487, time 68.18ms, mfu 31.84%, mem 2.40GB
+iter 990: loss 1.0464, time 80.02ms, mfu 32.38%, mem 2.40GB
+step 1000: train loss 0.8546, val loss 1.5351
+iter 1000: loss 1.0288, time 15951.20ms, mfu 29.16%, mem 2.40GB

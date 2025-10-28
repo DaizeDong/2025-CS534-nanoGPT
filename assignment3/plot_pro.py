@@ -1,37 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Parse NanoGPT-style stdout logs and/or enhanced CSV (type,x,loss,elapsed_s,avg_mfu),
-and plot *comparative* curves across multiple runs:
-
-  1) Loss vs Step         (per-run Train solid / Val dashed)
-  2) Loss vs Elapsed Time (per-run Train solid / Val dashed)
-  3) GPU Utilization (MFU %) vs Iteration (distinct color per run)
-  4) (optional) Iteration time vs Iteration (overlay per-run)
-
-Key fixes based on feedback:
-1) GPU 利用率图的不同曲线使用不同颜色，并按「每个实验/输入」区分。
-2) 新增第二张 loss 图：以“运行时间（秒）”为横坐标。
-3) 支持对比不同模型/实验：多个输入文件分别绘制为不同曲线（可用 --labels 指定名称）。
-   Train 与 Val 线型不同（Train 实线，Val 虚线），颜色随“实验”变化。
-4) 避免 step=0 与最后一个 step 被连线：每个实验单独绘制，并在 x 非单调时自动分段绘制。
-
-用法示例：
-  # 单个日志
-  python plot_metrics.py train.log
-
-  # 多个实验（混合日志与CSV），并命名曲线：
-  python plot_metrics.py logs/1gpu.log runs/4gpu/metrics.csv runs/8gpu/metrics.csv \
-      --labels "1GPU" "4GPU" "8GPU"
-
-输出：
-  loss_step.png   -- Loss vs Step（多实验对比）
-  loss_time.png   -- Loss vs Elapsed Time（多实验对比）
-  gpu_util.png    -- MFU vs Iteration（多实验对比）
-  iter_time.png   -- Iter time vs Iteration（多实验对比；若可推断）
-  metrics_parsed.csv -- 统一化明细（含 run 列，便于进一步分析）
-"""
-
 import argparse
 import csv
 import re
@@ -63,7 +29,7 @@ RE_ITER = re.compile(
 
 # ---------- CSV header detection ----------
 CSV_HEADER_MIN = {"type", "x", "loss"}
-CSV_HEADER_PLUS = {"elapsed_s", "avg_mfu"}  # optional
+CSV_HEADER_PLUS = {"elapsed_s", "avg_mfu", "mem_gb"}  # optional
 
 
 def is_csv_file(p: Path) -> bool:
@@ -105,11 +71,13 @@ class RunData:
         self.c_iter_loss: List[float] = []
         self.c_iter_elapsed: List[float] = []  # seconds
         self.c_iter_avgmfu: List[float] = []  # percent
+        self.c_iter_mem_gb: List[float] = []  # GB
         self.c_step_x: List[int] = []
         self.c_train_loss: List[float] = []
         self.c_val_loss: List[float] = []
         self.c_step_elapsed: List[float] = []
         self.c_step_avgmfu: List[float] = []
+        self.c_step_mem_gb: List[float] = []  # GB
 
 
 # ---------- Parsers ----------
@@ -152,9 +120,10 @@ def parse_csv_rows(rows: List[Dict[str, Any]]):
         except Exception:
             return None
 
-    c_iter_x, c_iter_loss, c_iter_elapsed, c_iter_avgmfu = [], [], [], []
-    tr_map: Dict[int, Tuple[float, Optional[float], Optional[float]]] = {}
-    va_map: Dict[int, Tuple[float, Optional[float], Optional[float]]] = {}
+    c_iter_x, c_iter_loss, c_iter_elapsed, c_iter_avgmfu, c_iter_mem = [], [], [], [], []
+    # (loss, elapsed_s, avg_mfu, mem_gb)
+    tr_map: Dict[int, Tuple[float, Optional[float], Optional[float], Optional[float]]] = {}
+    va_map: Dict[int, Tuple[float, Optional[float], Optional[float], Optional[float]]] = {}
 
     for row in rows:
         typ = (row.get("type") or "").strip().lower()
@@ -165,6 +134,7 @@ def parse_csv_rows(rows: List[Dict[str, Any]]):
         loss = _as_float(row.get("loss"))
         elapsed = _as_float(row.get("elapsed_s"))
         avg_mfu = _as_float(row.get("avg_mfu"))
+        mem_gb = _as_float(row.get("mem_gb"))
 
         if typ == "iter":
             if loss is not None:
@@ -172,14 +142,15 @@ def parse_csv_rows(rows: List[Dict[str, Any]]):
                 c_iter_loss.append(loss)
                 c_iter_elapsed.append(elapsed if elapsed is not None else float("nan"))
                 c_iter_avgmfu.append(avg_mfu if avg_mfu is not None else float("nan"))
+                c_iter_mem.append(mem_gb if mem_gb is not None else float("nan"))
         elif typ == "train_step":
             if loss is not None:
-                tr_map[x] = (loss, elapsed, avg_mfu)
+                tr_map[x] = (loss, elapsed, avg_mfu, mem_gb)
         elif typ == "val_step":
             if loss is not None:
-                va_map[x] = (loss, elapsed, avg_mfu)
+                va_map[x] = (loss, elapsed, avg_mfu, mem_gb)
 
-    c_step_x, c_train_loss, c_val_loss, c_step_elapsed, c_step_avgmfu = [], [], [], [], []
+    c_step_x, c_train_loss, c_val_loss, c_step_elapsed, c_step_avgmfu, c_step_mem = [], [], [], [], [], []
     merged_steps = sorted(set(tr_map.keys()) | set(va_map.keys()))
     for s in merged_steps:
         tr = tr_map.get(s)
@@ -188,13 +159,18 @@ def parse_csv_rows(rows: List[Dict[str, Any]]):
         va_l = va[0] if va else float("nan")
         elapsed = (tr[1] if (tr and tr[1] is not None) else (va[1] if (va and va[1] is not None) else float("nan")))
         avg_mfu = (tr[2] if (tr and tr[2] is not None) else (va[2] if (va and va[2] is not None) else float("nan")))
+        mem_gb = (tr[3] if (tr and tr[3] is not None) else (va[3] if (va and va[3] is not None) else float("nan")))
         c_step_x.append(s)
         c_train_loss.append(tr_l)
         c_val_loss.append(va_l)
         c_step_elapsed.append(elapsed)
         c_step_avgmfu.append(avg_mfu)
+        c_step_mem.append(mem_gb)
 
-    return c_iter_x, c_iter_loss, c_iter_elapsed, c_iter_avgmfu, c_step_x, c_train_loss, c_val_loss, c_step_elapsed, c_step_avgmfu
+    return (
+        c_iter_x, c_iter_loss, c_iter_elapsed, c_iter_avgmfu, c_iter_mem,
+        c_step_x, c_train_loss, c_val_loss, c_step_elapsed, c_step_avgmfu, c_step_mem
+    )
 
 
 def infer_elapsed_from_iter_time(iter_idx: List[int], iter_time_ms: List[float]) -> Dict[int, float]:
@@ -266,6 +242,36 @@ def nan_to_none(x: Optional[float]) -> Optional[float]:
     if isinstance(x, float) and math.isnan(x):
         return None
     return x
+
+
+def shorten_labels(labels: List[str]) -> List[str]:
+    """
+    Remove common prefix from labels to make them shorter.
+    Example: ['large_bs_mp2', 'large_bs_mp4'] -> ['mp2', 'mp4']
+    """
+    if not labels:
+        return labels
+    
+    if len(labels) == 1:
+        return labels
+    
+    # Find common prefix
+    common_prefix = ""
+    first_label = labels[0]
+    
+    for i in range(len(first_label)):
+        char = first_label[i]
+        # Check if all labels have the same character at this position
+        if all(label[i] == char for label in labels if i < len(label)):
+            common_prefix += char
+        else:
+            break
+    
+    # Only shorten if the common prefix ends with an underscore or is at least 3 characters
+    if len(common_prefix) >= 3 and common_prefix.endswith('_'):
+        return [label[len(common_prefix):] for label in labels]
+    
+    return labels
 
 
 # ---------- Plotters ----------
@@ -429,11 +435,11 @@ def plot_gpu_util(out_png: Path, runs: List[RunData], labels: List[str], util_sm
         if run.c_iter_x and any([not math.isnan(v) for v in run.c_iter_avgmfu]):
             x = run.c_iter_x
             y = run.c_iter_avgmfu
-            label = f"{lab} (CSV iter avg MFU)"
+            label = f"{lab}"
         elif run.t_iter_idx and any([not math.isnan(v) for v in run.t_iter_mfu]):
             x = run.t_iter_idx
             y = run.t_iter_mfu
-            label = f"{lab} (iter MFU)"
+            label = f"{lab}"
         else:
             # nothing to plot for this run
             continue
@@ -492,6 +498,145 @@ def plot_iter_time(out_png: Path, runs: List[RunData], labels: List[str], time_s
     plt.savefig(out_png)
 
 
+def plot_gpu_memory(out_png: Path, runs: List[RunData], labels: List[str]):
+    plt.figure(figsize=(8.5, 4.6), dpi=160)
+    colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    any_plotted = False
+
+    for idx, run in enumerate(runs):
+        color = colors[idx % len(colors)]
+        lab = labels[idx]
+
+        # Try to get memory data from CSV iter data
+        if run.c_iter_x and any([not math.isnan(v) for v in run.c_iter_mem_gb]):
+            x = run.c_iter_x
+            y = run.c_iter_mem_gb
+            # Remove NaN values
+            filtered_pairs = [(xi, yi) for xi, yi in zip(x, y) if not math.isnan(yi)]
+            if filtered_pairs:
+                x_clean = [p[0] for p in filtered_pairs]
+                y_clean = [p[1] for p in filtered_pairs]
+                plt.plot(x_clean, y_clean, color=color, linewidth=2.0, marker='o', markersize=3, label=f"{lab}")
+                any_plotted = True
+
+    if not any_plotted:
+        plt.close()
+        return
+
+    plt.xlabel("Iteration")
+    plt.ylabel("GPU Memory (GB)")
+    plt.title("GPU Memory Usage")
+    plt.grid(True, linestyle="--", alpha=0.3)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(out_png)
+
+
+def plot_final_time_comparison(out_png: Path, runs: List[RunData], labels: List[str]):
+    """Plot a bar chart comparing the final elapsed time for each run."""
+    plt.figure(figsize=(8.5, 5.0), dpi=160)
+
+    final_times = []
+    valid_labels = []
+
+    for idx, run in enumerate(runs):
+        # Try to get the last non-NaN elapsed time from step data
+        elapsed_times = []
+
+        # From CSV step data
+        for el in run.c_step_elapsed:
+            if not math.isnan(el):
+                elapsed_times.append(el)
+
+        # From CSV iter data
+        for el in run.c_iter_elapsed:
+            if not math.isnan(el):
+                elapsed_times.append(el)
+
+        # From text logs, infer elapsed time
+        if run.t_iter_idx and run.t_iter_time_ms:
+            iter_elapsed_map = infer_elapsed_from_iter_time(run.t_iter_idx, run.t_iter_time_ms)
+            elapsed_times.extend(iter_elapsed_map.values())
+
+        # Get the maximum elapsed time as the final time
+        if elapsed_times:
+            final_time = max(elapsed_times)
+            final_times.append(final_time)
+            valid_labels.append(labels[idx])
+
+    if not final_times:
+        plt.close()
+        return
+
+    colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    bars = plt.bar(range(len(final_times)), final_times, color=[colors[i % len(colors)] for i in range(len(final_times))])
+
+    # Add value labels on top of bars
+    for i, (bar, time_val) in enumerate(zip(bars, final_times)):
+        height = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width() / 2., height,
+                 f'{time_val:.1f}s',
+                 ha='center', va='bottom', fontsize=9)
+
+    plt.xlabel("Run")
+    plt.ylabel("Final Time (seconds)")
+    plt.title("Final Elapsed Time Comparison")
+    plt.xticks(range(len(valid_labels)), valid_labels, rotation=45, ha='right')
+    plt.grid(True, linestyle="--", alpha=0.3, axis='y')
+    plt.tight_layout()
+    plt.savefig(out_png)
+
+
+def plot_gpu_memory_avg_bar(out_png: Path, runs: List[RunData], labels: List[str]):
+    """Plot a bar chart comparing the average GPU memory usage for each run."""
+    plt.figure(figsize=(8.5, 5.0), dpi=160)
+
+    avg_memories = []
+    valid_labels = []
+
+    for idx, run in enumerate(runs):
+        # Collect all memory values (excluding NaN)
+        memory_values = []
+
+        # From CSV iter data
+        for mem in run.c_iter_mem_gb:
+            if not math.isnan(mem):
+                memory_values.append(mem)
+
+        # From text logs
+        for mem in run.t_iter_mem_gb:
+            if not math.isnan(mem):
+                memory_values.append(mem)
+
+        # Calculate average memory
+        if memory_values:
+            avg_memory = sum(memory_values) / len(memory_values)
+            avg_memories.append(avg_memory)
+            valid_labels.append(labels[idx])
+
+    if not avg_memories:
+        plt.close()
+        return
+
+    colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    bars = plt.bar(range(len(avg_memories)), avg_memories, color=[colors[i % len(colors)] for i in range(len(avg_memories))])
+
+    # Add value labels on top of bars
+    for i, (bar, mem_val) in enumerate(zip(bars, avg_memories)):
+        height = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width() / 2., height,
+                 f'{mem_val:.2f}GB',
+                 ha='center', va='bottom', fontsize=9)
+
+    plt.xlabel("Run")
+    plt.ylabel("Average GPU Memory (GB)")
+    plt.title("Average GPU Memory Usage Comparison")
+    plt.xticks(range(len(valid_labels)), valid_labels, rotation=45, ha='right')
+    plt.grid(True, linestyle="--", alpha=0.3, axis='y')
+    plt.tight_layout()
+    plt.savefig(out_png)
+
+
 # ---------- Unified CSV Writer ----------
 def write_unified_csv(out_csv: Path, runs: List[RunData], labels: List[str]):
     with out_csv.open("w", newline="") as f:
@@ -501,9 +646,10 @@ def write_unified_csv(out_csv: Path, runs: List[RunData], labels: List[str]):
         for lab, run in zip(labels, runs):
             # from text iter
             if run.t_iter_idx:
-                # if we can infer elapsed from iter times
                 iter_elapsed_map = infer_elapsed_from_iter_time(run.t_iter_idx, run.t_iter_time_ms) if run.t_iter_time_ms else {}
-                for i, loss, t_ms, mfu, mem in zip(run.t_iter_idx, run.t_iter_losses, run.t_iter_time_ms, run.t_iter_mfu, (run.t_iter_mem_gb or [float('nan')] * len(run.t_iter_idx))):
+                # fill mem if missing with NaN to align zips
+                t_mem = run.t_iter_mem_gb if run.t_iter_mem_gb else [float('nan')] * len(run.t_iter_idx)
+                for i, loss, t_ms, mfu, mem in zip(run.t_iter_idx, run.t_iter_losses, run.t_iter_time_ms, run.t_iter_mfu, t_mem):
                     w.writerow([lab, "iter", i, float(loss),
                                 nan_to_none(iter_elapsed_map.get(i, float("nan"))),
                                 nan_to_none(t_ms),
@@ -512,21 +658,21 @@ def write_unified_csv(out_csv: Path, runs: List[RunData], labels: List[str]):
 
             # from text steps
             for s, tr in zip(run.t_steps, run.t_train_losses):
-                w.writerow([lab, "train_step", s, float(tr), "", "", ""])
+                w.writerow([lab, "train_step", s, float(tr), "", "", "", ""])
             for s, va in zip(run.t_steps, run.t_val_losses):
-                w.writerow([lab, "val_step", s, float(va), "", "", ""])
+                w.writerow([lab, "val_step", s, float(va), "", "", "", ""])
 
-            # from csv iter
-            for i, loss, el, mfu in zip(run.c_iter_x, run.c_iter_loss, run.c_iter_elapsed, run.c_iter_avgmfu):
-                w.writerow([lab, "iter", int(i), float(loss), nan_to_none(el), "", nan_to_none(mfu)])
+            # from csv iter (now includes mem)
+            for i, loss, el, mfu, mem in zip(run.c_iter_x, run.c_iter_loss, run.c_iter_elapsed, run.c_iter_avgmfu, run.c_iter_mem_gb):
+                w.writerow([lab, "iter", int(i), float(loss), nan_to_none(el), "", nan_to_none(mfu), nan_to_none(mem)])
 
-            # from csv steps
-            for s, tr, el, mfu in zip(run.c_step_x, run.c_train_loss, run.c_step_elapsed, run.c_step_avgmfu):
+            # from csv steps (use merged step-level elapsed/mfu/mem for both train/val rows)
+            for s, tr, el, mfu, mem in zip(run.c_step_x, run.c_train_loss, run.c_step_elapsed, run.c_step_avgmfu, run.c_step_mem_gb):
                 if not (isinstance(tr, float) and math.isnan(tr)):
-                    w.writerow([lab, "train_step", int(s), float(tr), nan_to_none(el), "", nan_to_none(mfu)])
-            for s, va, el, mfu in zip(run.c_step_x, run.c_val_loss, run.c_step_elapsed, run.c_step_avgmfu):
+                    w.writerow([lab, "train_step", int(s), float(tr), nan_to_none(el), "", nan_to_none(mfu), nan_to_none(mem)])
+            for s, va, el, mfu, mem in zip(run.c_step_x, run.c_val_loss, run.c_step_elapsed, run.c_step_avgmfu, run.c_step_mem_gb):
                 if not (isinstance(va, float) and math.isnan(va)):
-                    w.writerow([lab, "val_step", int(s), float(va), nan_to_none(el), "", nan_to_none(mfu)])
+                    w.writerow([lab, "val_step", int(s), float(va), nan_to_none(el), "", nan_to_none(mfu), nan_to_none(mem)])
 
 
 # ---------- Main ----------
@@ -541,6 +687,9 @@ def main():
     ap.add_argument("--out-time-loss", type=Path, default=Path("loss_time.png"))
     ap.add_argument("--out-util", type=Path, default=Path("gpu_util.png"))
     ap.add_argument("--out-iter-time", type=Path, default=Path("iter_time.png"))
+    ap.add_argument("--out-mem", type=Path, default=Path("gpu_memory.png"))
+    ap.add_argument("--out-mem-avg-bar", type=Path, default=Path("gpu_memory_avg.png"))
+    ap.add_argument("--out-time-compare", type=Path, default=Path("final_time_comparison.png"))
     ap.add_argument("--out-csv", type=Path, default=Path("metrics_parsed.csv"))
     args = ap.parse_args()
 
@@ -565,13 +714,17 @@ def main():
             if rows is None:
                 sys.stderr.write(f"[WARN] skip (bad CSV header): {p}\n")
             else:
-                (run.c_iter_x, run.c_iter_loss, run.c_iter_elapsed, run.c_iter_avgmfu,
-                 run.c_step_x, run.c_train_loss, run.c_val_loss, run.c_step_elapsed, run.c_step_avgmfu) = parse_csv_rows(rows)
+                (run.c_iter_x, run.c_iter_loss, run.c_iter_elapsed,
+                 run.c_iter_avgmfu, run.c_iter_mem_gb, run.c_step_x, run.c_train_loss, run.c_val_loss, run.c_step_elapsed, run.c_step_avgmfu, run.c_step_mem_gb) = parse_csv_rows(rows)
+
         else:
             text = p.read_text(encoding="utf-8", errors="ignore").splitlines()
             (run.t_steps, run.t_train_losses, run.t_val_losses,
              run.t_iter_idx, run.t_iter_losses, run.t_iter_time_ms, run.t_iter_mfu, run.t_iter_mem_gb) = parse_text_log(text)
         runs.append(run)
+
+    # Shorten labels to remove common prefix for better readability
+    labels = shorten_labels(labels)
 
     # Write unified CSV
     write_unified_csv(args.out_csv, runs, labels)
@@ -581,6 +734,9 @@ def main():
     plot_losses_by_time(args.out_time_loss, runs, labels)
     plot_gpu_util(args.out_util, runs, labels, args.util_smooth)
     plot_iter_time(args.out_iter_time, runs, labels, args.time_smooth)
+    plot_gpu_memory(args.out_mem, runs, labels)
+    plot_final_time_comparison(args.out_time_compare, runs, labels)
+    plot_gpu_memory_avg_bar(args.out_mem_avg_bar, runs, labels)
 
     print(f"Wrote: {args.out_csv}")
     print(f"Wrote: {args.out_step_loss}")
@@ -589,6 +745,12 @@ def main():
         print(f"Wrote: {args.out_util}")
     if Path(args.out_iter_time).exists():
         print(f"Wrote: {args.out_iter_time}")
+    if Path(args.out_mem).exists():
+        print(f"Wrote: {args.out_mem}")
+    if Path(args.out_mem_avg_bar).exists():
+        print(f"Wrote: {args.out_mem_avg_bar}")
+    if Path(args.out_time_compare).exists():
+        print(f"Wrote: {args.out_time_compare}")
 
 
 if __name__ == "__main__":
