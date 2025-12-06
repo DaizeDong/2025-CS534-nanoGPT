@@ -1,0 +1,240 @@
+Overriding config with config/train_shakespeare_char_large_bs_head8_tp4.py:
+Overriding: csv_path = runs/losses_large_bs_head8_tp4.csv
+Overriding config with config/train_shakespeare_char_large_bs_head8_tp4.py:
+Overriding: csv_path = runs/losses_large_bs_head8_tp4.csv
+Overriding config with config/train_shakespeare_char_large_bs_head8_tp4.py:
+Overriding: csv_path = runs/losses_large_bs_head8_tp4.csv
+Overriding config with config/train_shakespeare_char_large_bs_head8_tp4.py:
+Overriding: csv_path = runs/losses_large_bs_head8_tp4.csv
+Overriding config with config/train_shakespeare_char_large_bs_head8_tp4.py:
+Overriding: csv_path = runs/losses_large_bs_head8_tp4.csv
+Overriding config with config/train_shakespeare_char_large_bs_head8_tp4.py:
+Overriding: csv_path = runs/losses_large_bs_head8_tp4.csv
+Overriding config with config/train_shakespeare_char_large_bs_head8_tp4.py:
+Overriding: csv_path = runs/losses_large_bs_head8_tp4.csv
+Overriding config with config/train_shakespeare_char_large_bs_head8_tp4.py:
+Overriding: csv_path = runs/losses_large_bs_head8_tp4.csv
+Overriding config with config/train_shakespeare_char_large_bs_head8_tp4.py:
+Overriding: csv_path = runs/losses_large_bs_head8_tp4.csv
+Overriding config with config/train_shakespeare_char_large_bs_head8_tp4.py:
+Overriding: csv_path = runs/losses_large_bs_head8_tp4.csv
+Overriding config with config/train_shakespeare_char_large_bs_head8_tp4.py:
+Overriding: csv_path = runs/losses_large_bs_head8_tp4.csv
+Overriding config with config/train_shakespeare_char_large_bs_head8_tp4.py:
+Overriding: csv_path = runs/losses_large_bs_head8_tp4.csv
+Configuring TP only: TP=4
+Configuring TP only: TP=4
+Configuring TP only: TP=4
+Configuring TP only: TP=4
+tokens per iteration will be: 524,288tokens per iteration will be: 524,288
+
+tokens per iteration will be: 524,288effective global batch size (sequences) will be: 2,048tokens per iteration will be: 524,288effective global batch size (sequences) will be: 2,048
+
+
+
+effective global batch size (sequences) will be: 2,048
+effective global batch size (sequences) will be: 2,048
+Initializing a new model from scratch
+Initializing a new model from scratch
+Initializing a new model from scratch
+Initializing a new model from scratch
+number of parameters: 10.65M
+number of parameters: 10.65M
+number of parameters: 10.65M
+number of parameters: 10.65M
+Configuring tensor parallel with mesh: DeviceMesh((4,), device: 'cuda', stride: (1,))
+Configuring tensor parallel with mesh: DeviceMesh((4,), device: 'cuda', stride: (1,))
+Configuring tensor parallel with mesh: DeviceMesh((4,), device: 'cuda', stride: (1,))
+Configuring tensor parallel with mesh: DeviceMesh((4,), device: 'cuda', stride: (1,))
+Tensor parallel configuration completed
+Tensor parallel configuration completed
+num decayed parameter tensors: 27, with 10,765,056 parameters
+num non-decayed parameter tensors: 13, with 4,992 parameters
+num decayed parameter tensors: 27, with 10,765,056 parameters
+Tensor parallel configuration completednum non-decayed parameter tensors: 13, with 4,992 parameters
+
+using fused AdamW: True
+using fused AdamW: True
+num decayed parameter tensors: 27, with 10,765,056 parameters
+num non-decayed parameter tensors: 13, with 4,992 parameters
+using fused AdamW: True
+Tensor parallel configuration completed
+num decayed parameter tensors: 27, with 10,765,056 parameters
+num non-decayed parameter tensors: 13, with 4,992 parameters
+using fused AdamW: True
+Overriding config with config/train_shakespeare_char_large_bs_head8_tp4.py:
+Overriding: csv_path = runs/losses_large_bs_head8_tp4.csv
+Overriding config with config/train_shakespeare_char_large_bs_head8_tp4.py:
+Overriding: csv_path = runs/losses_large_bs_head8_tp4.csv
+Overriding config with config/train_shakespeare_char_large_bs_head8_tp4.py:
+Overriding: csv_path = runs/losses_large_bs_head8_tp4.csv
+Overriding config with config/train_shakespeare_char_large_bs_head8_tp4.py:
+Overriding: csv_path = runs/losses_large_bs_head8_tp4.csv
+Configuring TP only: TP=4
+Configuring TP only: TP=4
+Configuring TP only: TP=4
+Configuring TP only: TP=4
+tokens per iteration will be: 524,288
+tokens per iteration will be: 524,288effective global batch size (sequences) will be: 2,048
+
+effective global batch size (sequences) will be: 2,048
+tokens per iteration will be: 524,288tokens per iteration will be: 524,288
+
+effective global batch size (sequences) will be: 2,048
+effective global batch size (sequences) will be: 2,048
+Initializing a new model from scratch
+Initializing a new model from scratch
+Initializing a new model from scratch
+Initializing a new model from scratch
+number of parameters: 10.65M
+number of parameters: 10.65M
+number of parameters: 10.65M
+number of parameters: 10.65M
+Configuring tensor parallel with mesh: DeviceMesh((4,), device: 'cuda', stride: (1,))
+Configuring tensor parallel with mesh: DeviceMesh((4,), device: 'cuda', stride: (1,))
+Configuring tensor parallel with mesh: DeviceMesh((4,), device: 'cuda', stride: (1,))
+Configuring tensor parallel with mesh: DeviceMesh((4,), device: 'cuda', stride: (1,))
+Tensor parallel configuration completedTensor parallel configuration completed
+
+Tensor parallel configuration completed
+num decayed parameter tensors: 27, with 10,765,056 parametersnum decayed parameter tensors: 27, with 10,765,056 parameters
+
+num non-decayed parameter tensors: 13, with 4,992 parametersnum non-decayed parameter tensors: 13, with 4,992 parameters
+
+num decayed parameter tensors: 27, with 10,765,056 parameters
+num non-decayed parameter tensors: 13, with 4,992 parameters
+using fused AdamW: True
+using fused AdamW: True
+using fused AdamW: True
+Tensor parallel configuration completed
+num decayed parameter tensors: 27, with 10,765,056 parameters
+num non-decayed parameter tensors: 13, with 4,992 parameters
+using fused AdamW: True
+Overriding config with config/train_shakespeare_char_large_bs_head8_tp4.py:
+Overriding: csv_path = runs/losses_large_bs_head8_tp4.csv
+Overriding config with config/train_shakespeare_char_large_bs_head8_tp4.py:
+Overriding: csv_path = runs/losses_large_bs_head8_tp4.csv
+Overriding config with config/train_shakespeare_char_large_bs_head8_tp4.py:
+Overriding: csv_path = runs/losses_large_bs_head8_tp4.csv
+Overriding config with config/train_shakespeare_char_large_bs_head8_tp4.py:
+Overriding: csv_path = runs/losses_large_bs_head8_tp4.csv
+Configuring TP only: TP=4
+Configuring TP only: TP=4
+Configuring TP only: TP=4
+Configuring TP only: TP=4
+tokens per iteration will be: 524,288
+tokens per iteration will be: 524,288effective global batch size (sequences) will be: 2,048tokens per iteration will be: 524,288
+
+
+effective global batch size (sequences) will be: 2,048effective global batch size (sequences) will be: 2,048
+
+tokens per iteration will be: 524,288
+effective global batch size (sequences) will be: 2,048
+Initializing a new model from scratch
+Initializing a new model from scratch
+Initializing a new model from scratch
+Initializing a new model from scratch
+number of parameters: 10.65M
+number of parameters: 10.65M
+number of parameters: 10.65M
+number of parameters: 10.65M
+Configuring tensor parallel with mesh: DeviceMesh((4,), device: 'cuda', stride: (1,))
+Configuring tensor parallel with mesh: DeviceMesh((4,), device: 'cuda', stride: (1,))Configuring tensor parallel with mesh: DeviceMesh((4,), device: 'cuda', stride: (1,))
+
+Configuring tensor parallel with mesh: DeviceMesh((4,), device: 'cuda', stride: (1,))
+Tensor parallel configuration completed
+num decayed parameter tensors: 27, with 10,765,056 parameters
+num non-decayed parameter tensors: 13, with 4,992 parameters
+using fused AdamW: True
+Tensor parallel configuration completed
+Tensor parallel configuration completed
+num decayed parameter tensors: 27, with 10,765,056 parameters
+num non-decayed parameter tensors: 13, with 4,992 parameters
+num decayed parameter tensors: 27, with 10,765,056 parametersusing fused AdamW: TrueTensor parallel configuration completed
+
+num non-decayed parameter tensors: 13, with 4,992 parameters
+
+using fused AdamW: True
+num decayed parameter tensors: 27, with 10,765,056 parameters
+num non-decayed parameter tensors: 13, with 4,992 parameters
+using fused AdamW: True
+Overriding config with config/train_shakespeare_char_large_bs_head8_tp4.py:
+Overriding: csv_path = runs/losses_large_bs_head8_tp4.csv
+Overriding config with config/train_shakespeare_char_large_bs_head8_tp4.py:
+Overriding: csv_path = runs/losses_large_bs_head8_tp4.csv
+Overriding config with config/train_shakespeare_char_large_bs_head8_tp4.py:
+Overriding: csv_path = runs/losses_large_bs_head8_tp4.csv
+Overriding config with config/train_shakespeare_char_large_bs_head8_tp4.py:
+Overriding: csv_path = runs/losses_large_bs_head8_tp4.csv
+Configuring TP only: TP=4
+Configuring TP only: TP=4
+Configuring TP only: TP=4
+tokens per iteration will be: 524,288
+effective global batch size (sequences) will be: 2,048
+Initializing a new model from scratch
+tokens per iteration will be: 524,288
+effective global batch size (sequences) will be: 2,048
+Initializing a new model from scratch
+tokens per iteration will be: 524,288
+effective global batch size (sequences) will be: 2,048
+Initializing a new model from scratch
+Configuring TP only: TP=4
+tokens per iteration will be: 524,288
+effective global batch size (sequences) will be: 2,048
+Initializing a new model from scratch
+number of parameters: 10.65M
+number of parameters: 10.65M
+number of parameters: 10.65M
+number of parameters: 10.65M
+Configuring tensor parallel with mesh: DeviceMesh((4,), device: 'cuda', stride: (1,))
+Configuring tensor parallel with mesh: DeviceMesh((4,), device: 'cuda', stride: (1,))
+Configuring tensor parallel with mesh: DeviceMesh((4,), device: 'cuda', stride: (1,))
+Configuring tensor parallel with mesh: DeviceMesh((4,), device: 'cuda', stride: (1,))
+Tensor parallel configuration completed
+Tensor parallel configuration completed
+num decayed parameter tensors: 27, with 10,765,056 parameters
+num non-decayed parameter tensors: 13, with 4,992 parameters
+using fused AdamW: Truenum decayed parameter tensors: 27, with 10,765,056 parameters
+
+num non-decayed parameter tensors: 13, with 4,992 parameters
+using fused AdamW: True
+Tensor parallel configuration completed
+num decayed parameter tensors: 27, with 10,765,056 parameters
+num non-decayed parameter tensors: 13, with 4,992 parameters
+using fused AdamW: True
+Tensor parallel configuration completed
+num decayed parameter tensors: 27, with 10,765,056 parameters
+num non-decayed parameter tensors: 13, with 4,992 parameters
+using fused AdamW: True
+Overriding config with config/train_shakespeare_char_large_bs_head8_tp4.py:
+Overriding: csv_path = runs/losses_large_bs_head8_tp4.csv
+Overriding config with config/train_shakespeare_char_large_bs_head8_tp4.py:
+Overriding: csv_path = runs/losses_large_bs_head8_tp4.csv
+Overriding config with config/train_shakespeare_char_large_bs_head8_tp4.py:
+Overriding: csv_path = runs/losses_large_bs_head8_tp4.csv
+Overriding config with config/train_shakespeare_char_large_bs_head8_tp4.py:
+Overriding: csv_path = runs/losses_large_bs_head8_tp4.csv
+Configuring TP only: TP=4
+Configuring TP only: TP=4
+Configuring TP only: TP=4
+Configuring TP only: TP=4
+tokens per iteration will be: 524,288
+tokens per iteration will be: 524,288effective global batch size (sequences) will be: 2,048tokens per iteration will be: 524,288
+
+tokens per iteration will be: 524,288
+effective global batch size (sequences) will be: 2,048
+
+effective global batch size (sequences) will be: 2,048
+effective global batch size (sequences) will be: 2,048
+Initializing a new model from scratchInitializing a new model from scratch
+Initializing a new model from scratch
+
+Initializing a new model from scratch
+number of parameters: 10.65M
+number of parameters: 10.65M
+number of parameters: 10.65M
+number of parameters: 10.65M
+Configuring tensor parallel with mesh: DeviceMesh((4,), device: 'cuda', stride: (1,))
+Configuring tensor parallel with mesh: DeviceMesh((4,), device: 'cuda', stride: (1,))
+Configuring tensor parallel with mesh: DeviceMesh((4,), device: 'cuda', stride: (1,))
+Configuring tensor parallel with mesh: DeviceMesh((4,), device: 'cuda', stride: (1,))

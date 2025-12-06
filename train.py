@@ -80,6 +80,8 @@ auto_tune_mp = False
 auto_tune_candidates = "1,2,4,8,16,32,64,128,256,512"
 auto_tune_warmup_steps = 10
 auto_tune_measure_steps = 20
+# tensor parallel
+tensor_parallel = 1  # number of TP ranks (1 = disabled)
 # -----------------------------------------------------------------------------
 # allow overrides from config files / CLI
 config_keys = [k for k, v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]
@@ -98,18 +100,72 @@ if ddp:
     torch.cuda.set_device(device)
     master_process = ddp_rank == 0
     seed_offset = ddp_rank
-    assert gradient_accumulation_steps % ddp_world_size == 0
-    gradient_accumulation_steps //= ddp_world_size
 else:
     master_process = True
     seed_offset = 0
     ddp_world_size = 1
+    ddp_rank = 0
+    ddp_local_rank = 0
 
-if model_parallel and ddp:
+# Tensor Parallel and Data Parallel setup
+tp_enabled = tensor_parallel > 1
+
+if tp_enabled:
+    if not ddp:
+        raise ValueError("Tensor parallelism requires distributed training (use torchrun)")
+    
+    try:
+        from torch.distributed.device_mesh import init_device_mesh
+    except ImportError:
+        raise ImportError("Tensor parallelism requires PyTorch >= 2.3.0 with distributed tensor support")
+    
+    tp_size = tensor_parallel
+    
+    # Check if we're using DP+TP or TP only
+    if ddp_world_size > tp_size:
+        # DP+TP: Create 2D mesh (dp_dim, tp_dim)
+        dp_size = ddp_world_size // tp_size
+        if ddp_world_size % tp_size != 0:
+            raise ValueError(f"WORLD_SIZE ({ddp_world_size}) must be divisible by tensor_parallel ({tp_size})")
+        
+        dp_enabled = True
+        print(f"Configuring DP+TP: DP={dp_size}, TP={tp_size}, Total={ddp_world_size}")
+        mesh_2d = init_device_mesh("cuda", (dp_size, tp_size), mesh_dim_names=("dp", "tp"))
+        tp_mesh = mesh_2d["tp"]
+        dp_mesh = mesh_2d["dp"]
+        
+        # Adjust gradient accumulation for DP (only DP dimension matters)
+        assert gradient_accumulation_steps % dp_size == 0
+        gradient_accumulation_steps //= dp_size
+    elif ddp_world_size == tp_size:
+        # TP only: Create 1D mesh
+        dp_enabled = False
+        print(f"Configuring TP only: TP={tp_size}")
+        tp_mesh = init_device_mesh("cuda", (tp_size,))
+        dp_mesh = None
+    else:
+        raise ValueError(f"WORLD_SIZE ({ddp_world_size}) must be >= tensor_parallel ({tp_size})")
+else:
+    tp_mesh = None
+    dp_mesh = None
+    dp_enabled = False
+
+    # Pure DDP (no TP): adjust gradient accumulation by world size
+    if ddp:
+        assert gradient_accumulation_steps % ddp_world_size == 0
+        gradient_accumulation_steps //= ddp_world_size
+
+if model_parallel > 1 and ddp:
     raise RuntimeError("model_parallel > 1 cannot be used with DDP")
 
-tokens_per_iter = gradient_accumulation_steps * ddp_world_size * batch_size * block_size
-global_batch_size = gradient_accumulation_steps * ddp_world_size * batch_size
+# Calculate effective world size for batch size calculation
+if tp_enabled and dp_enabled:
+    effective_world_size = dp_size  # Only DP contributes to batch size scaling
+else:
+    effective_world_size = ddp_world_size
+
+tokens_per_iter = gradient_accumulation_steps * effective_world_size * batch_size * block_size
+global_batch_size = gradient_accumulation_steps * effective_world_size * batch_size
 print(f"tokens per iteration will be: {tokens_per_iter:,}")
 print(f"effective global batch size (sequences) will be: {global_batch_size:,}")
 
@@ -261,28 +317,46 @@ def create_model(mp_split_size=None):
         _model.crop_block_size(block_size)
         _model_args['block_size'] = block_size
     
-    # Configure model-parallel
-    if model_parallel > 1:
-        _model.configure_model_parallel(model_parallel)
-        if mp_split_size is not None and mp_split_size > 0:
-            _model._mp_split_size = mp_split_size
-        elif pipeline_split_size > 0:
-            _model._mp_split_size = pipeline_split_size
-    else:
+    # Configure tensor parallel (must be before model parallel and DDP)
+    if tp_enabled:
+        if model_parallel > 1:
+            raise RuntimeError("Tensor parallel and model parallel cannot be used together")
+        # Move model to device before TP parallelization
+        # TP will handle further device placement via DeviceMesh
         _model.to(device)
+        _model.configure_tensor_parallel(tp_mesh)
+    else:
+        # Configure model-parallel (only if TP is not enabled)
+        if model_parallel > 1:
+            _model.configure_model_parallel(model_parallel)
+            if mp_split_size is not None and mp_split_size > 0:
+                _model._mp_split_size = mp_split_size
+            elif pipeline_split_size > 0:
+                _model._mp_split_size = pipeline_split_size
+        else:
+            _model.to(device)
     
     # Optimizer & scaler
     _scaler = torch.cuda.amp.GradScaler(enabled=(dtype == 'float16'))
     _optimizer = _model.configure_optimizers(weight_decay, learning_rate, (beta1, beta2), device_type)
     
-    # Apply compile if needed (skip for model-parallel)
-    if compile and model_parallel <= 1:
+    # Apply compile if needed (skip for model-parallel and tensor-parallel)
+    if compile and model_parallel <= 1 and not tp_enabled:
         print("compiling the model... (takes ~1 min)")
         _model = torch.compile(_model)
     
     # Apply DDP if needed
+    # Note: TP-only mode doesn't need DDP, only DP+TP or pure DDP needs it
     if ddp:
-        _model = DDP(_model, device_ids=[ddp_local_rank])
+        if dp_enabled:
+            # For DP+TP, use the DP mesh process group
+            # Each DP group contains TP ranks, so we need to get the process group for this DP rank
+            dp_pg = dp_mesh.get_group()
+            _model = DDP(_model, device_ids=[ddp_local_rank], process_group=dp_pg)
+        elif not tp_enabled:
+            # Regular DDP (no TP, pure data parallel)
+            _model = DDP(_model, device_ids=[ddp_local_rank])
+        # else: TP-only mode, no DDP needed
     
     return _model, _optimizer, _scaler, _model_args
 
@@ -384,7 +458,8 @@ X, Y = get_batch('train')
 t0 = time.time()
 run_wall_t0 = t0
 local_iter_num = 0
-raw_model = model.module if ddp else model
+# Get raw model: check if model is wrapped by DDP
+raw_model = model.module if isinstance(model, DDP) else model
 running_mfu = -1.0
 
 # track GPU peak memory per segment for logging
@@ -461,7 +536,8 @@ while True:
 
     # gradient accumulation steps
     for micro_step in range(gradient_accumulation_steps):
-        if ddp:
+        if ddp and not tp_enabled:
+            # Only set grad sync for pure DDP (not TP-only or DP+TP)
             model.require_backward_grad_sync = (micro_step == gradient_accumulation_steps - 1)
         with ctx:
             logits, loss = model(X, Y)

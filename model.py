@@ -152,6 +152,10 @@ class GPT(nn.Module):
         self._mp_devices: Optional[List[torch.device]] = None
         self._mp_stage_block_ranges: Optional[List[Tuple[int, int]]] = None
         self._mp_split_size = 0  # 0 for disabling
+        
+        # tensor parallel
+        self._tp_enabled = False
+        self._tp_mesh = None
 
     def configure_model_parallel(self, num_stages: Optional[int]):
         """Pipeline parallel"""
@@ -204,6 +208,93 @@ class GPT(nn.Module):
             self.transformer.ln_f.to(self._mp_devices[-1])
             print(f"Moved ln_f to device: {self._mp_devices[-1]}")
 
+    def configure_tensor_parallel(self, tp_mesh):
+        """Configure tensor parallelism using PyTorch's TP API"""
+        if tp_mesh is None:
+            self._tp_enabled = False
+            self._tp_mesh = None
+            print("Tensor parallel disabled")
+            return
+        
+        try:
+            from torch.distributed.device_mesh import DeviceMesh
+            from torch.distributed.tensor.parallel import (
+                parallelize_module,
+                ColwiseParallel,
+                RowwiseParallel,
+            )
+        except ImportError:
+            raise ImportError("Tensor parallelism requires PyTorch >= 2.3.0 with distributed tensor support")
+        
+        self._tp_enabled = True
+        self._tp_mesh = tp_mesh
+        print(f"Configuring tensor parallel with mesh: {tp_mesh}")
+        
+        # Skip embedding TP for now - keep embeddings on full dimension
+        # This means we'll only do TP within transformer blocks
+        # Note: This is not ideal but may help debug the issue
+        
+        # Parallelize output head
+        parallelize_module(self.lm_head, tp_mesh, {"weight": RowwiseParallel()})
+        
+        # Parallelize each transformer block's attention and MLP modules
+        # Since embeddings are not TP'd, the input to first block is full dimension
+        # We need to handle this carefully
+        for i in range(self.config.n_layer):
+            block = self.transformer.h[i]
+            # Parallelize attention module
+            attn_plan = {
+                "c_attn": ColwiseParallel(),
+                "c_proj": RowwiseParallel(),
+            }
+            parallelize_module(block.attn, tp_mesh, attn_plan)
+            
+            # Parallelize MLP module
+            mlp_plan = {
+                "c_fc": ColwiseParallel(),
+                "c_proj": RowwiseParallel(),
+            }
+            parallelize_module(block.mlp, tp_mesh, mlp_plan)
+        
+        # Verify parallelization worked correctly
+        tp_size = tp_mesh.size()
+        split_embd = self.config.n_embd // tp_size
+        
+        # Debug: Check if c_attn weights were properly split
+        if len(self.transformer.h) > 0:
+            first_block = self.transformer.h[0]
+            c_attn_weight_shape = first_block.attn.c_attn.weight.shape
+            expected_shape = (3 * self.config.n_embd, split_embd)  # [out_features, in_features]
+            print(f"DEBUG: c_attn weight shape after parallelization: {c_attn_weight_shape}, expected: {expected_shape}")
+            if c_attn_weight_shape != expected_shape:
+                print(f"ERROR: c_attn weight shape mismatch!")
+                print(f"  Got: {c_attn_weight_shape}")
+                print(f"  Expected: {expected_shape}")
+                print(f"  This indicates parallelization didn't work correctly.")
+                raise RuntimeError(f"Tensor parallelization failed: c_attn weight shape mismatch")
+        
+        # Adjust LayerNorm weights in each block
+        for i in range(self.config.n_layer):
+            block = self.transformer.h[i]
+            # Adjust ln_1 weight
+            if block.ln_1.weight.shape[0] != split_embd:
+                block.ln_1.weight = nn.Parameter(block.ln_1.weight[:split_embd].clone())
+                if block.ln_1.bias is not None:
+                    block.ln_1.bias = nn.Parameter(block.ln_1.bias[:split_embd].clone())
+            # Adjust ln_2 weight
+            if block.ln_2.weight.shape[0] != split_embd:
+                block.ln_2.weight = nn.Parameter(block.ln_2.weight[:split_embd].clone())
+                if block.ln_2.bias is not None:
+                    block.ln_2.bias = nn.Parameter(block.ln_2.bias[:split_embd].clone())
+        
+        # Adjust final LayerNorm weight
+        if self.transformer.ln_f.weight.shape[0] != split_embd:
+            self.transformer.ln_f.weight = nn.Parameter(self.transformer.ln_f.weight[:split_embd].clone())
+            if self.transformer.ln_f.bias is not None:
+                self.transformer.ln_f.bias = nn.Parameter(self.transformer.ln_f.bias[:split_embd].clone())
+        
+        print("Tensor parallel configuration completed")
+
     def get_num_params(self, non_embedding=True):
         """
         Return the number of parameters in the model.
@@ -236,6 +327,18 @@ class GPT(nn.Module):
             tok_emb = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
             pos_emb = self.transformer.wpe(pos) # position embeddings of shape (t, n_embd)
             x = self.transformer.drop(tok_emb + pos_emb)
+            
+            # If TP is enabled but embeddings are not TP'd, split dimension manually
+            if self._tp_enabled:
+                tp_size = self._tp_mesh.size()
+                split_embd = self.config.n_embd // tp_size
+                # Get TP rank to determine which chunk to use
+                from torch.distributed import get_rank
+                tp_rank = get_rank() % tp_size
+                start_idx = tp_rank * split_embd
+                end_idx = (tp_rank + 1) * split_embd
+                x = x[:, :, start_idx:end_idx]  # (b, t, split_embd)
+            
             for block in self.transformer.h:
                 x = block(x)
             x = self.transformer.ln_f(x)
